@@ -1,5 +1,14 @@
 window.SmartFarmaAnimations = (() => {
     
+    const isLowPerformanceDevice = (() => {
+        const memory = Number(navigator.deviceMemory || 0);
+        const cores = Number(navigator.hardwareConcurrency || 0);
+        const saveData = navigator.connection && navigator.connection.saveData === true;
+        return saveData || (memory > 0 && memory <= 2) || (cores > 0 && cores <= 2);
+    })();
+
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     // ==========================================
     // 1. ANIMAÇÕES DE SCROLL (Original)
     // ==========================================
@@ -25,6 +34,11 @@ window.SmartFarmaAnimations = (() => {
     // 2. ANIMAÇÃO PREMIUM DE LOGIN (Cinematográfica)
     // ==========================================
     const playLoginExperience = (callback) => {
+        if (isLowPerformanceDevice || prefersReducedMotion()) {
+            if (typeof callback === 'function') callback();
+            return;
+        }
+
         // A. Cria os elementos no DOM dinamicamente
         const overlay = document.createElement('div');
         overlay.className = 'login-experience-overlay';

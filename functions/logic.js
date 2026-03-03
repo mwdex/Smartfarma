@@ -34,6 +34,16 @@ const SmartFarmaLogic = (() => {
 
     const hasStrongEnoughPassword = (value = '') => String(value).trim().length >= 6;
 
+
+    const isLowPerformanceDevice = (() => {
+        const memory = Number(navigator.deviceMemory || 0);
+        const cores = Number(navigator.hardwareConcurrency || 0);
+        const saveData = navigator.connection && navigator.connection.saveData === true;
+        return saveData || (memory > 0 && memory <= 2) || (cores > 0 && cores <= 2);
+    })();
+
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const LOGIN_THROTTLE_KEY = 'sf_login_throttle';
     const getLoginThrottleState = () => {
         try {
@@ -108,6 +118,12 @@ const SmartFarmaLogic = (() => {
 
     const animateValue = (obj, start, end, duration, isCurrency = true) => {
         if (!obj) return;
+
+        if (isLowPerformanceDevice || prefersReducedMotion()) {
+            obj.textContent = isCurrency ? Number(end).toFixed(2) : String(Math.floor(Number(end)));
+            return;
+        }
+
         if (obj.animFrame) cancelAnimationFrame(obj.animFrame);
 
         let startTimestamp = null;
@@ -116,11 +132,11 @@ const SmartFarmaLogic = (() => {
             const progress = Math.min((timestamp - startTimestamp) / duration, 1);
             const easeOut = 1 - Math.pow(1 - progress, 4);
             const currentVal = easeOut * (end - start) + start;
-            obj.innerHTML = isCurrency ? currentVal.toFixed(2) : Math.floor(currentVal);
+            obj.textContent = isCurrency ? currentVal.toFixed(2) : String(Math.floor(currentVal));
             if (progress < 1) {
                 obj.animFrame = window.requestAnimationFrame(step);
             } else {
-                obj.innerHTML = isCurrency ? end.toFixed(2) : end;
+                obj.textContent = isCurrency ? Number(end).toFixed(2) : String(Math.floor(Number(end)));
             }
         };
         obj.animFrame = window.requestAnimationFrame(step);
@@ -128,6 +144,16 @@ const SmartFarmaLogic = (() => {
 
     const applyStaggerEffect = (selector) => {
         const elements = document.querySelectorAll(selector);
+
+        if (isLowPerformanceDevice || prefersReducedMotion()) {
+            elements.forEach((el) => {
+                el.style.opacity = '1';
+                el.style.transform = 'none';
+                el.style.animation = 'none';
+            });
+            return;
+        }
+
         elements.forEach((el, index) => {
             el.style.opacity = '0';
             el.style.transform = 'translateY(30px)';
@@ -1429,6 +1455,10 @@ const SmartFarmaLogic = (() => {
 
     const API = {
         init: () => {
+            if (isLowPerformanceDevice && document.body) {
+                document.body.classList.add('low-performance-mode');
+            }
+
             waitForFirebase(() => {
                 initDB();
                 initLoginView();
