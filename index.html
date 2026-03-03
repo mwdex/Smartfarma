@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Farma | Gestão Inteligente</title>
+    <link rel="stylesheet" href="styles.css?v=9">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="pngs/logo.png">
+</head>
+<body>
+    <div class="fluid-bg">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <nav class="glass-nav reveal-top hidden" id="mainNav">
+        <div class="logo-container" style="display: flex; align-items: center;">
+            <img src="pngs/logo.png" alt="Smart Farma" style="height: 45px; width: auto; filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));">
+        </div>
+        <div class="nav-user">
+            <span id="navUserName" class="user-name">Usuário</span>
+            <button id="btnLogout" class="btn-secondary ripple-trigger btn-small">Sair</button>
+        </div>
+    </nav>
+
+    <main id="app-container">
+        
+        <section id="view-login" class="view-section active">
+            
+            <div class="login-hud-container tilt-element">
+                <div class="hud-glow"></div>
+                <div class="hud-circle-1"></div>
+                <div class="hud-circle-2"></div>
+                <img src="pngs/logo_premium_transparent.png" alt="Smart Farma Logo" class="hud-logo" style="mix-blend-mode: multiply;">
+            </div>
+
+            <div class="login-wrapper">
+                <div class="premium-glass-card tilt-element">
+                    
+                    <div id="loginFormContainer">
+                        <h2 class="login-title">Entrar</h2>
+                        <p class="login-subtitle">Acesse seu portal de gestão inteligente.</p>
+                        
+                        <form id="formLogin">
+                            <div class="input-group">
+                                <input type="text" id="loginUser" class="pill-input" placeholder="Usuário" required autocomplete="off">
+                            </div>
+                            <div class="input-group">
+                                <input type="password" id="loginPass" class="pill-input" placeholder="Senha" required>
+                            </div>
+                            
+                            <button type="submit" class="btn-login-red ripple-trigger w-100">AUTENTICAR</button>
+                            <div id="loginFeedback" class="feedback-msg"></div>
+                        </form>
+
+                        <div class="login-links">
+                            <a href="#" id="linkEsqueceuSenha">Esqueceu a senha?</a>
+                            <a href="#" id="linkSolicitarAcesso">Solicitar acesso</a>
+                        </div>
+                    </div>
+
+                    <div id="registerFormContainer" class="hidden">
+                        <h2 class="login-title">Novo Acesso</h2>
+                        <p class="login-subtitle" style="margin-bottom: 1.5rem;">Preencha para aprovação do escritório.</p>
+                        
+                        <form id="formRegister">
+                            <div class="input-group" style="margin-bottom: 1rem;">
+                                <input type="text" id="regNome" class="pill-input" placeholder="Seu Nome Completo" required autocomplete="off">
+                            </div>
+                            <div class="input-group" style="margin-bottom: 1rem;">
+                                <input type="text" id="regUser" class="pill-input" placeholder="Usuário Desejado" required autocomplete="off">
+                            </div>
+                            
+                            <div class="input-group" style="margin-bottom: 1rem;">
+                                <select id="regLoja" class="pill-input" required style="color: var(--text-secondary);">
+                                </select>
+                            </div>
+
+                            <div class="input-group" style="margin-bottom: 1.5rem;">
+                                <input type="password" id="regPass" class="pill-input" placeholder="Senha Desejada" required>
+                            </div>
+                            
+                            <button type="submit" class="btn-primary ripple-trigger w-100">ENVIAR SOLICITAÇÃO</button>
+                            <button type="button" id="btnVoltarLogin" class="btn-secondary ripple-trigger w-100 mt-1">Voltar</button>
+                            <div id="registerFeedback" class="feedback-msg"></div>
+                        </form>
+                    </div>
+
+                    <div id="forgotFormContainer" class="hidden">
+                        <h2 class="login-title">Recuperação Local</h2>
+                        <p class="login-subtitle" style="margin-bottom: 1.5rem; font-size: 0.85rem;">
+                            Peça para o escritório acessar via <strong>TeamViewer/AnyDesk</strong> para liberar a alteração de senha.
+                        </p>
+                        
+                        <form id="formAdminAuthReset">
+                            <div class="input-group" style="margin-bottom: 1rem;">
+                                <input type="text" id="resetTargetUser" class="pill-input" placeholder="Usuário do Vendedor" required autocomplete="off">
+                            </div>
+                            
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.2); margin: 1rem 0; padding-top: 1rem; position: relative;">
+                                <small style="color: #ffb300; display: block; margin-bottom: 0.5rem;">🔒 Acesso restrito ao Administrador</small>
+                                <div class="input-group" style="margin-bottom: 1rem;">
+                                    <input type="text" id="resetAdminUser" class="pill-input" placeholder="Usuário Admin" required autocomplete="new-password">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 1.5rem;">
+                                    <input type="password" id="resetAdminPass" class="pill-input" placeholder="Senha Admin" required autocomplete="new-password">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-primary ripple-trigger w-100" style="background: var(--accent-1);">VALIDAR ADMIN E LIBERAR</button>
+                            <button type="button" id="btnVoltarForgot" class="btn-secondary ripple-trigger w-100 mt-1">Voltar ao Início</button>
+                            <div id="forgotFeedback1" class="feedback-msg"></div>
+                        </form>
+
+                        <form id="formNewPassLocal" class="hidden">
+                            <div style="background: rgba(46, 125, 50, 0.1); border: 1px solid #2e7d32; border-radius: 8px; padding: 10px; margin-bottom: 1.5rem;">
+                                <p style="color: #2e7d32; font-weight: bold; font-size: 0.9rem; text-align: center; margin: 0;">✅ Desbloqueado pelo Administrador</p>
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 0.85rem; text-align: center; margin-bottom: 1rem;">Vendedor, digite a sua nova palavra-passe abaixo:</p>
+                            
+                            <div class="input-group" style="margin-bottom: 1.5rem;">
+                                <input type="password" id="resetNewPassValue" class="pill-input" placeholder="Sua Nova Senha" required autocomplete="new-password">
+                            </div>
+                            
+                            <button type="submit" class="btn-primary ripple-trigger w-100" style="background: #2e7d32;">SALVAR NOVA SENHA</button>
+                            <div id="forgotFeedback2" class="feedback-msg"></div>
+                        </form>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section id="view-vendedor" class="view-section hidden">
+            <div class="vendedor-container fade-in" style="max-width: 1200px; margin: 0 auto; padding: 0 2rem;">
+                
+                <div class="dashboard-stats mb-2">
+                    <div class="stat-card glass-panel tilt-element">
+                        <span class="stat-label">Meu Caixa (Aprovado)</span>
+                        <span class="stat-value text-green">R$ <span id="vendTotalAprovado">0.00</span></span>
+                    </div>
+                    <div class="stat-card glass-panel tilt-element">
+                        <span class="stat-label">Em Análise</span>
+                        <span class="stat-value text-yellow">R$ <span id="vendTotalPendente">0.00</span></span>
+                    </div>
+                    <div class="stat-card glass-panel tilt-element">
+                        <span class="stat-label">Avisos / Recusadas</span>
+                        <span class="stat-value text-red"><span id="vendQtdRecusada">0</span></span>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="glass-panel">
+                        <h3>Registrar Nova Sangria</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Envie os valores retirados do caixa para o escritório.</p>
+                        <form id="formSangria">
+                            <div class="input-group">
+                                <label>Valor (R$)</label>
+                                <input type="number" step="0.01" id="sangriaValor" class="glass-input" placeholder="0.00" required>
+                            </div>
+                            <div class="input-group">
+                                <label>Observação (Opcional)</label>
+                                <textarea id="sangriaObs" class="glass-input" rows="3" placeholder="Ex: Sangria da tarde, notas de 100..."></textarea>
+                            </div>
+                            <button type="submit" class="btn-primary ripple-trigger w-100" style="font-size: 1.1rem; padding: 1rem;">Enviar Sangria</button>
+                        </form>
+                    </div>
+                    
+                    <div class="glass-panel">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <h3>Meu Histórico</h3>
+                            <select id="filtroVendedor" class="glass-input" style="width: auto; padding: 0.4rem 1rem;">
+                                <option value="todas">Todas as Sangrias</option>
+                                <option value="pendente">Em Análise</option>
+                                <option value="aprovado">Aprovadas</option>
+                                <option value="recusado">Recusadas</option>
+                            </select>
+                        </div>
+                        <div id="listaHistoricoVendedor" class="historico-lista" style="margin-top: 1.5rem;"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel mt-2 mb-2">
+                    <h3 style="color: var(--accent-1);">Boletos a Pagar</h3>
+                    <p class="subtitle" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Verifique os lançamentos do escritório, confirme o recebimento e informe quando forem pagos.</p>
+                    <div id="listaBoletosVendedor" class="historico-lista" style="max-height: auto;"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-admin" class="view-section hidden">
+            <div class="admin-container fade-in">
+                <aside class="admin-sidebar glass-panel">
+                    <h3>Visão Geral</h3>
+                    <div class="stats-list mt-2">
+                        <div class="stat-mini">
+                            <span class="label">Caixa Total (Aprovado)</span>
+                            <span class="value text-green">R$ <span id="globalAprovado">0.00</span></span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="label">Aguardando Análise</span>
+                            <span class="value text-yellow"><span id="globalPendente">0</span> itens</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="label">Sangrias Recusadas</span>
+                            <span class="value text-red"><span id="globalRecusado">0</span> itens</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-2" id="adminOnlyTools" style="display: none;">
+                        <button onclick="window.SmartFarmaLogic.abrirModalNovoUsuario()" class="btn-primary ripple-trigger w-100" style="background: var(--accent-3); padding: 0.8rem;">
+                            + Criar Acesso Interno
+                        </button>
+                    </div>
+
+                    <div class="activity-feed mt-2" id="adminSolicitacoesContainer" style="display: none;">
+                        <h4 style="color: var(--accent-1); margin-bottom: 1rem; font-size: 0.95rem;">👋 Novos Cadastros</h4>
+                        <ul id="listaSolicitacoesAdmin" style="list-style: none; padding: 0; margin: 0;"></ul>
+                    </div>
+
+                    <div class="activity-feed mt-2">
+                        <h4 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 0.95rem;">Últimas Movimentações</h4>
+                        <ul id="globalActivityList"></ul>
+                    </div>
+                </aside>
+
+                <div class="admin-main">
+                    
+                    <div id="admin-indicadores" class="dashboard-metrics glass-panel mb-2 active-view">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="color: var(--text-primary);">Saúde Financeira da Rede</h3>
+                            <span style="font-size: 0.85rem; font-weight: bold; color: var(--accent-3); background: rgba(21, 101, 192, 0.1); padding: 0.3rem 0.8rem; border-radius: 50px;">Geral</span>
+                        </div>
+                        
+                        <div class="progress-bar-container mt-2">
+                            <div class="progress-bar">
+                                <div id="barAprovado" class="bar-fill bg-green" style="width: 0%;"></div>
+                                <div id="barPendente" class="bar-fill bg-yellow" style="width: 0%;"></div>
+                                <div id="barRecusado" class="bar-fill bg-red" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-labels">
+                                <span>Aprovado (<span id="pctAprovado">0</span>%)</span>
+                                <span>Análise (<span id="pctPendente">0</span>%)</span>
+                                <span>Recusado (<span id="pctRecusado">0</span>%)</span>
+                            </div>
+                        </div>
+
+                        <div class="extra-stats mt-2">
+                            <div class="mini-stat">Ticket Médio: <strong class="text-blue">R$ <span id="ticketMedio">0.00</span></strong></div>
+                            <div class="mini-stat">Maior Sangria: <strong class="text-blue">R$ <span id="maiorSangria">0.00</span></strong></div>
+                            <div class="mini-stat">Total de Envios: <strong class="text-blue"><span id="totalEnvios">0</span></strong></div>
+                        </div>
+                    </div>
+
+                    <div id="admin-lancar-boleto" class="glass-panel mb-2 active-view">
+                        <h3 style="color: var(--text-primary);">Lançar Novo Boleto</h3>
+                        <form id="formBoletoAdmin" class="mt-1" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                            <div class="input-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                <label>Loja Destino</label>
+                                <select id="boletoLojaAdmin" class="glass-input" required></select>
+                            </div>
+                            <div class="input-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                                <label>Nº do Boleto (Linha/Código)</label>
+                                <input type="text" id="boletoNumeroAdmin" class="glass-input" placeholder="Ex: 03399..." required>
+                            </div>
+                            <div class="input-group" style="flex: 1; min-width: 120px; margin-bottom: 0;">
+                                <label>Valor (R$)</label>
+                                <input type="number" step="0.01" id="boletoValorAdmin" class="glass-input" required>
+                            </div>
+                            <button type="submit" class="btn-primary ripple-trigger" style="height: 48px; padding: 0 2rem;">Lançar</button>
+                        </form>
+                    </div>
+
+                    <div id="admin-equipe" class="glass-panel mb-2 active-view">
+                        <h3 style="color: var(--text-primary);">Status da Equipe</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Controle de acesso e última atividade dos vendedores.</p>
+                        <div id="listaEquipeAdmin" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; max-height: 400px; overflow-y: auto; padding-right: 10px;">
+                        </div>
+                    </div>
+
+                    <div id="admin-lojas-grid" class="lojas-grid active-view"></div>
+
+                    <div id="admin-loja-detalhe" class="loja-detalhe glass-panel hidden-view">
+                        <div class="detalhe-header">
+                            <button id="btnVoltarLojas" class="btn-secondary btn-small">← Voltar</button>
+                            <h2 id="detalheLojaNome">Nome da Loja</h2>
+                            <div class="caixa-loja">Caixa: <span class="text-green">R$ <span id="detalheLojaCaixa">0.00</span></span></div>
+                        </div>
+                        
+                        <div class="detalhe-content mt-2">
+                            <div class="vendedores-list">
+                                <h4>Equipe da Loja</h4>
+                                <ul id="listaVendedoresLoja"></ul>
+                            </div>
+                            <div class="sangrias-list">
+                                <h4>Controle de Sangrias</h4>
+                                <div id="listaSangriasAdmin" class="historico-lista" style="max-height: 300px;"></div>
+                                
+                                <h4 class="mt-2" style="border-top: 1px solid var(--glass-border); padding-top: 1rem;">Controle de Boletos</h4>
+                                <div id="listaBoletosAdmin" class="historico-lista" style="max-height: 300px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="actionModal" class="modal-overlay hidden">
+        <div class="glass-card modal-content tilt-element">
+            <h3 id="modalTitle">Ação</h3>
+            <p id="modalSubtitle" style="color: var(--text-secondary); margin-bottom: 1.8rem; font-size: 1rem;"></p>
+            <div class="input-group hidden" id="groupNovoValor">
+                <label>Corrigir Valor (R$)</label>
+                <input type="number" step="0.01" id="modalNovoValor" class="glass-input">
+            </div>
+            <div class="input-group">
+                <label>Justificativa / Motivo (Obrigatório)</label>
+                <textarea id="modalMotivo" class="glass-input" rows="4" placeholder="Informe o vendedor do motivo..."></textarea>
+            </div>
+            <div class="action-btns mt-2">
+                <button id="btnModalCancel" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button id="btnModalConfirm" class="btn-primary" style="flex: 1;">Confirmar Ação</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="pagarBoletoModal" class="modal-overlay hidden">
+        <div class="glass-card modal-content tilt-element">
+            <h3 style="color: var(--accent-1);">Informar Pagamento</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                Boleto original: <strong id="modalBoletoOriginalDesc"></strong> <br>
+                Valor exigido: <strong class="text-blue" id="modalBoletoOriginalValor"></strong>
+            </p>
+            <div class="input-group">
+                <label>Validação de Segurança (Nº do Boleto)</label>
+                <input type="text" id="modalBoletoNumeroConfirmacao" class="glass-input" placeholder="Digite o número do boleto pago" required>
+            </div>
+            <div class="input-group">
+                <label>Valor Pago / Retirado do Caixa (R$)</label>
+                <input type="number" step="0.01" id="modalBoletoValorPago" class="glass-input" required>
+            </div>
+            <div class="input-group">
+                <label>Observações Adicionais (Juros, troco, etc)</label>
+                <textarea id="modalBoletoObs" class="glass-input" rows="2" placeholder="Ex: Deu R$ 2,00 de juros..."></textarea>
+            </div>
+            <div class="action-btns mt-2">
+                <button id="btnBoletoCancel" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button id="btnBoletoConfirm" class="btn-primary" style="flex: 1; background: var(--accent-1);">Baixar Boleto</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="aprovarAcessoModal" class="modal-overlay hidden">
+        <div class="glass-card modal-content tilt-element">
+            <h3 style="color: var(--accent-2);">Aprovar Novo Usuário</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                Deseja liberar o acesso de vendedor para <strong id="modalReqNome"></strong> (Login: <span id="modalReqUser"></span>)?
+            </p>
+            <div class="input-group">
+                <label>Vincular a qual Loja?</label>
+                <select id="modalReqLoja" class="glass-input" required></select>
+            </div>
+            <div class="action-btns mt-2">
+                <button onclick="window.SmartFarmaLogic.fecharModalAprovacao()" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button id="btnConfirmarAcesso" onclick="window.SmartFarmaLogic.confirmarAprovacaoAcesso()" class="btn-primary" style="flex: 1; background: var(--accent-2);">Aprovar e Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="novoUsuarioModal" class="modal-overlay hidden">
+        <div class="glass-card modal-content tilt-element">
+            <h3 style="color: var(--accent-3);">Novo Acesso Personalizado</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Crie acessos para novos vendedores ou equipa do escritório.</p>
+            
+            <div class="input-group">
+                <label>Nome Completo</label>
+                <input type="text" id="admNewNome" class="glass-input" placeholder="Ex: Ricardo Silva">
+            </div>
+            <div class="input-group">
+                <label>Usuário (Login)</label>
+                <input type="text" id="admNewUser" class="glass-input" placeholder="Ex: ricardo.admin">
+            </div>
+            <div class="input-group">
+                <label>Palavra-passe Inicial</label>
+                <input type="password" id="admNewPass" class="glass-input">
+            </div>
+            <div class="input-group">
+                <label>Tipo de Acesso</label>
+                <select id="admNewTipo" class="glass-input" onchange="window.SmartFarmaLogic.toggleLojaSelection()">
+                    <option value="vendedor">Vendedor (Loja)</option>
+                    <option value="admin">Escritório (Admin)</option>
+                </select>
+            </div>
+            <div class="input-group" id="groupSelectLojaNovo">
+                <label>Vincular à Loja</label>
+                <select id="admNewLoja" class="glass-input"></select>
+            </div>
+
+            <div class="action-btns mt-2">
+                <button onclick="window.SmartFarmaLogic.fecharModalNovoUsuario()" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button onclick="window.SmartFarmaLogic.salvarNovoUsuario()" class="btn-primary" style="flex: 1; background: var(--accent-3);">Criar Acesso</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="themeToggleBtn" class="theme-toggle-btn ripple-trigger">🌙</button>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+         
+        import { getAuth, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyAFgqK-QxVquxug4D_56V_KvGpkp6kjKVg",
+            authDomain: "sangrias-28f80.firebaseapp.com",
+            projectId: "sangrias-28f80",
+            storageBucket: "sangrias-28f80.firebasestorage.app",
+            messagingSenderId: "904392772225",
+            appId: "1:904392772225:web:9ba159b12f7e3f5e9e1b80",
+            measurementId: "G-SC2HB762BE"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        window.FirebaseDB = getFirestore(app);
+        
+        window.FirebaseAuth = getAuth(app);
+        
+        window.FirebaseModules = { 
+            collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc, deleteDoc, onSnapshot,
+            setPersistence, browserLocalPersistence, browserSessionPersistence
+        };
+        
+        console.log("☁️ Módulos do Firebase baixados com sucesso (Modo Real-time Ativado)!");
+    </script>
+
+    <script type="module" src="functions/animations.js?v=9"></script>
+    <script type="module" src="functions/interactions.js?v=9"></script>
+    <script type="module" src="functions/logic.js?v=9"></script>
+    <script type="module" src="app.js?v=9"></script>
+</body>
+</html>
