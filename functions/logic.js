@@ -36,6 +36,33 @@ const SmartFarmaLogic = (() => {
 
     const safeStatusClass = (value = '') => String(value).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
 
+    const sanitizeUsername = (value = '') => String(value).trim().replace(/\s+/g, '');
+
+    const hasStrongEnoughPassword = (value = '') => String(value).trim().length >= 6;
+
+    const LOGIN_THROTTLE_KEY = 'sf_login_throttle';
+    const getLoginThrottleState = () => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(LOGIN_THROTTLE_KEY) || '{}');
+            return {
+                fails: Number(parsed.fails) || 0,
+                blockedUntil: Number(parsed.blockedUntil) || 0
+            };
+        } catch {
+            return { fails: 0, blockedUntil: 0 };
+        }
+    };
+
+    const registerFailedLogin = () => {
+        const now = Date.now();
+        const state = getLoginThrottleState();
+        const fails = state.fails + 1;
+        const blockedUntil = fails >= 5 ? (now + 30_000) : 0;
+        localStorage.setItem(LOGIN_THROTTLE_KEY, JSON.stringify({ fails: blockedUntil ? 0 : fails, blockedUntil }));
+    };
+
+    const clearFailedLogins = () => localStorage.removeItem(LOGIN_THROTTLE_KEY);
+
     const waitForFirebase = (callback, attempts = 0) => {
         if (window.FirebaseDB && window.FirebaseModules) {
             callback();
@@ -157,13 +184,17 @@ const SmartFarmaLogic = (() => {
         const { db, collection, addDoc, getDocs, query, where } = getFB();
         
         const nome = document.getElementById('admNewNome').value.trim();
-        const user = document.getElementById('admNewUser').value.trim();
+        const user = sanitizeUsername(document.getElementById('admNewUser').value);
         const pass = document.getElementById('admNewPass').value.trim();
         const tipo = document.getElementById('admNewTipo').value;
         const lojaId = (tipo === CONFIG.ROLES.VENDEDOR) ? document.getElementById('admNewLoja').value : null;
 
         if(!nome || !user || !pass) {
             return Toast.warning("Preencha todos os campos obrigatórios.");
+        }
+
+        if (!hasStrongEnoughPassword(pass)) {
+            return Toast.warning('A senha deve ter no mínimo 6 caracteres.');
         }
 
         const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user));
@@ -280,8 +311,8 @@ const SmartFarmaLogic = (() => {
             const txtOriginal = btn.innerText;
             btn.innerText = "A validar..."; btn.disabled = true;
 
-            const targetUser = document.getElementById('resetTargetUser').value.trim();
-            const adminUser = document.getElementById('resetAdminUser').value.trim();
+            const targetUser = sanitizeUsername(document.getElementById('resetTargetUser').value);
+            const adminUser = sanitizeUsername(document.getElementById('resetAdminUser').value);
             const adminPass = document.getElementById('resetAdminPass').value.trim();
 
             try {
@@ -359,10 +390,22 @@ const SmartFarmaLogic = (() => {
             const btnSubmit = document.querySelector('#formRegister button[type="submit"]');
             btnSubmit.innerText = 'A enviar...'; btnSubmit.disabled = true;
 
-            const nome = document.getElementById('regNome').value;
-            const user = document.getElementById('regUser').value;
+            const nome = document.getElementById('regNome').value.trim();
+            const user = sanitizeUsername(document.getElementById('regUser').value);
             const lojaSelecionada = document.getElementById('regLoja').value; 
             const pass = document.getElementById('regPass').value;
+
+            if (!nome || !user || !lojaSelecionada || !pass) {
+                Toast.warning('Preencha todos os campos obrigatórios.');
+                btnSubmit.innerText = 'ENVIAR SOLICITAÇÃO'; btnSubmit.disabled = false;
+                return;
+            }
+
+            if (!hasStrongEnoughPassword(pass)) {
+                Toast.warning('A senha deve ter no mínimo 6 caracteres.');
+                btnSubmit.innerText = 'ENVIAR SOLICITAÇÃO'; btnSubmit.disabled = false;
+                return;
+            }
 
             const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user));
             const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user));
@@ -399,46 +442,69 @@ const SmartFarmaLogic = (() => {
             const textoOriginal = btnSubmit.innerText;
             btnSubmit.innerText = 'A validar...'; btnSubmit.style.opacity = '0.7'; btnSubmit.disabled = true;
 
-            const user = document.getElementById('loginUser').value;
+            const user = sanitizeUsername(document.getElementById('loginUser').value);
             const pass = document.getElementById('loginPass').value;
-            
-            const hashedPass = await Security.hashPassword(pass);
-            
-            const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user), where("senha", "==", hashedPass));
-            const usersSnap = await getDocs(qUsers);
 
-            if (!usersSnap.empty) {
-                const userDoc = usersSnap.docs[0];
-                Store.setUser({ id: userDoc.id, ...userDoc.data() });
-                
-                await atualizarStatusVendedor(Store.getUser().id);
-                
-                formLogin.reset();
-                feedbackLogin.innerText = '';
-                Toast.info(`Bem-vindo de volta, ${Store.getUser().nome.split(' ')[0]}!`);
+            const throttleState = getLoginThrottleState();
+            if (throttleState.blockedUntil > Date.now()) {
+                const segundos = Math.ceil((throttleState.blockedUntil - Date.now()) / 1000);
+                Toast.warning(`Muitas tentativas. Aguarde ${segundos}s para tentar novamente.`);
+                btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                return;
+            }
 
-                if (window.SmartFarmaAnimations && window.SmartFarmaAnimations.playLoginExperience) {
-                    btnSubmit.innerText = 'A Autenticar...';
-                    window.SmartFarmaAnimations.playLoginExperience(() => {
+            if (!user || !pass) {
+                Toast.warning('Informe usuário e senha.');
+                btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                return;
+            }
+
+            try {
+                const hashedPass = await Security.hashPassword(pass);
+                
+                const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user), where("senha", "==", hashedPass));
+                const usersSnap = await getDocs(qUsers);
+
+                if (!usersSnap.empty) {
+                    clearFailedLogins();
+                    const userDoc = usersSnap.docs[0];
+                    Store.setUser({ id: userDoc.id, ...userDoc.data() });
+                    
+                    await atualizarStatusVendedor(Store.getUser().id);
+                    
+                    formLogin.reset();
+                    feedbackLogin.innerText = '';
+                    Toast.info(`Bem-vindo de volta, ${Store.getUser().nome.split(' ')[0]}!`);
+
+                    if (window.SmartFarmaAnimations && window.SmartFarmaAnimations.playLoginExperience) {
+                        btnSubmit.innerText = 'A Autenticar...';
+                        window.SmartFarmaAnimations.playLoginExperience(() => {
+                            btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                            if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
+                            else { navigateTo('view-admin'); loadAdminView(); }
+                        });
+                    } else {
                         btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
                         if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
                         else { navigateTo('view-admin'); loadAdminView(); }
-                    });
+                    }
                 } else {
-                    if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
-                    else { navigateTo('view-admin'); loadAdminView(); }
+                    registerFailedLogin();
+                    const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user), where("senha", "==", hashedPass), where("tipo", "==", CONFIG.REQ_TYPES.CADASTRO));
+                    if (!(await getDocs(qReq)).empty) {
+                        Toast.warning("A sua conta ainda está em análise pelo escritório.");
+                    } else {
+                        Toast.error("Credenciais inválidas. Tente novamente.");
+                    }
+                    
+                    formLogin.classList.add('shake-trigger');
+                    setTimeout(() => formLogin.classList.remove('shake-trigger'), 400);
+                    
+                    btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
                 }
-            } else {
-                const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user), where("senha", "==", hashedPass), where("tipo", "==", CONFIG.REQ_TYPES.CADASTRO));
-                if (!(await getDocs(qReq)).empty) {
-                    Toast.warning("A sua conta ainda está em análise pelo escritório.");
-                } else {
-                    Toast.error("Credenciais inválidas. Tente novamente.");
-                }
-                
-                formLogin.classList.add('shake-trigger');
-                setTimeout(() => formLogin.classList.remove('shake-trigger'), 400);
-                
+            } catch (error) {
+                Logger.error('Erro durante autenticação', error);
+                Toast.error('Falha na autenticação. Tente novamente.');
                 btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
             }
         });
