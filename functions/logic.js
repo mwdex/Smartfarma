@@ -28,12 +28,6 @@ const SmartFarmaLogic = (() => {
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
 
-    const escapeJsString = (value = '') => String(value)
-        .replaceAll('\\', '\\\\')
-        .replaceAll("'", "\\'")
-        .replaceAll('\n', ' ')
-        .replaceAll('\r', ' ');
-
     const safeStatusClass = (value = '') => String(value).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
 
     const sanitizeUsername = (value = '') => String(value).trim().replace(/\s+/g, '');
@@ -527,6 +521,62 @@ const SmartFarmaLogic = (() => {
             Toast.info("Sessão encerrada com segurança.");
             navigateTo('view-login');
         });
+
+        const btnAbrirModalNovoUsuario = document.getElementById('btnAbrirModalNovoUsuario');
+        if (btnAbrirModalNovoUsuario) {
+            btnAbrirModalNovoUsuario.addEventListener('click', abrirModalNovoUsuario);
+        }
+
+        const btnFecharModalAprovacao = document.getElementById('btnFecharModalAprovacao');
+        if (btnFecharModalAprovacao) {
+            btnFecharModalAprovacao.addEventListener('click', fecharModalAprovacao);
+        }
+
+        const btnConfirmarAcesso = document.getElementById('btnConfirmarAcesso');
+        if (btnConfirmarAcesso) {
+            btnConfirmarAcesso.addEventListener('click', confirmarAprovacaoAcesso);
+        }
+
+        const admNewTipo = document.getElementById('admNewTipo');
+        if (admNewTipo) {
+            admNewTipo.addEventListener('change', toggleLojaSelection);
+        }
+
+        const btnFecharModalNovoUsuario = document.getElementById('btnFecharModalNovoUsuario');
+        if (btnFecharModalNovoUsuario) {
+            btnFecharModalNovoUsuario.addEventListener('click', fecharModalNovoUsuario);
+        }
+
+        const btnSalvarNovoUsuario = document.getElementById('btnSalvarNovoUsuario');
+        if (btnSalvarNovoUsuario) {
+            btnSalvarNovoUsuario.addEventListener('click', salvarNovoUsuario);
+        }
+
+        document.addEventListener('click', (event) => {
+            const actionEl = event.target.closest('[data-action]');
+            if (!actionEl) return;
+
+            const { action, id, lojaId, nome, usuario, desc, valor } = actionEl.dataset;
+
+            if (action === 'confirmar-recebimento-boleto' && id) {
+                confirmarRecebimentoBoleto(id);
+            } else if (action === 'abrir-modal-boleto' && id) {
+                abrirModalBoleto(id, desc || '', Number(valor));
+            } else if (action === 'abrir-modal-aprovacao' && id) {
+                abrirModalAprovacao(id, nome || '', usuario || '', lojaId || '');
+            } else if (action === 'excluir-solicitacao' && id) {
+                excluirSolicitacao(id);
+            } else if (action === 'abrir-loja' && lojaId) {
+                abrirLoja(lojaId, nome || 'Loja');
+            } else if (action === 'excluir-vendedor' && id) {
+                excluirVendedor(id);
+            } else if (action === 'aprovar-sangria' && id && lojaId) {
+                aprovarSangria(id, lojaId);
+            } else if ((action === 'editar-sangria' || action === 'recusar-sangria') && id && lojaId) {
+                const tipoAcao = action === 'editar-sangria' ? 'editar' : 'recusar';
+                abrirModal(id, tipoAcao, lojaId, Number(valor));
+            }
+        });
     };
 
     const loadVendedorView = () => {
@@ -705,7 +755,7 @@ const SmartFarmaLogic = (() => {
         container.innerHTML = meusBoletos.map(b => {
             let diferencaHtml = '';
             const statusAtual = b.status ? String(b.status).toLowerCase().trim() : 'pendente';
-            const descricaoJs = escapeJsString(b.descricao || '');
+            const descricaoSafe = escapeHtml(b.descricao || '');
             const numeroBoletoSafe = escapeHtml(b.numero_boleto || 'N/A');
             const dataEmissaoSafe = escapeHtml(b.data_emissao || 'Sem data');
             const obsVendedorSafe = escapeHtml(b.observacao_vendedor || '');
@@ -725,11 +775,11 @@ const SmartFarmaLogic = (() => {
             if (statusAtual === 'pendente') {
                 bordaCard = '#ff8f00';
                 statusBadge = '<span class="status-badge status-pendente">NOVO BOLETO (CONFERIR)</span>';
-                acoesHtml = `<button onclick="window.SmartFarmaLogic.confirmarRecebimentoBoleto('${b.id}')" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: #ff8f00; border: none;">Acabei de conferir</button>`;
+                acoesHtml = `<button data-action="confirmar-recebimento-boleto" data-id="${b.id}" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: #ff8f00; border: none;">Acabei de conferir</button>`;
             } else if (statusAtual === 'confirmado') {
                 bordaCard = '#c62828';
                 statusBadge = '<span class="status-badge status-recusado">A PAGAR</span>';
-                acoesHtml = `<button onclick="window.SmartFarmaLogic.abrirModalBoleto('${b.id}', '${descricaoJs}', ${b.valor_original})" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
+                acoesHtml = `<button data-action="abrir-modal-boleto" data-id="${b.id}" data-desc="${descricaoSafe}" data-valor="${Number(b.valor_original)}" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
             } else {
                 bordaCard = '#2e7d32';
                 statusBadge = '<span class="status-badge status-aprovado">PAGO</span>';
@@ -896,8 +946,8 @@ const SmartFarmaLogic = (() => {
                 const reqNomeSafe = escapeHtml(req.nome);
                 const reqUsuarioSafe = escapeHtml(req.usuario);
                 const nomeLojaSafe = escapeHtml(nomeLoja);
-                const reqNomeJs = escapeJsString(req.nome);
-                const reqUsuarioJs = escapeJsString(req.usuario);
+                const reqNomeAttr = escapeHtml(req.nome || '');
+                const reqUsuarioAttr = escapeHtml(req.usuario || '');
 
                 return `
                 <li style="background: rgba(13, 71, 161, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--accent-2); gap: 10px; flex-wrap: wrap;">
@@ -906,8 +956,8 @@ const SmartFarmaLogic = (() => {
                         <small style="color: var(--text-secondary);">Login: ${reqUsuarioSafe} | Loja: <strong>${nomeLojaSafe}</strong></small>
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button onclick="window.SmartFarmaLogic.abrirModalAprovacao('${req.id}', '${reqNomeJs}', '${reqUsuarioJs}', '${req.loja_id}')" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
-                        <button onclick="window.SmartFarmaLogic.excluirSolicitacao('${req.id}')" class="btn-excluir ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Excluir</button>
+                        <button data-action="abrir-modal-aprovacao" data-id="${req.id}" data-nome="${reqNomeAttr}" data-usuario="${reqUsuarioAttr}" data-loja-id="${req.loja_id || ''}" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
+                        <button data-action="excluir-solicitacao" data-id="${req.id}" class="btn-excluir ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Excluir</button>
                     </div>
                 </li>
                 `;
@@ -1004,9 +1054,9 @@ const SmartFarmaLogic = (() => {
             const boletosPendentes = boletos.filter(b => b.loja_id === loja.id && (b.status ? String(b.status).toLowerCase().trim() : 'pendente') !== 'pago').length;
 
             const lojaNomeSafe = escapeHtml(loja.nome || 'Loja');
-            const lojaNomeJs = escapeJsString(loja.nome || 'Loja');
+            const lojaNomeAttr = escapeHtml(loja.nome || 'Loja');
             return `
-                <div class="glass-panel loja-card tilt-element" onclick="window.SmartFarmaLogic.abrirLoja('${loja.id}', '${lojaNomeJs}')" style="view-transition-name: loja-card-${loja.id};">
+                <div class="glass-panel loja-card tilt-element" data-action="abrir-loja" data-loja-id="${loja.id}" data-nome="${lojaNomeAttr}" style="view-transition-name: loja-card-${loja.id}; cursor: pointer;">
                     <div>
                         <h3 style="color: var(--accent-3);">${lojaNomeSafe}</h3>
                         <div class="loja-info">
@@ -1054,7 +1104,7 @@ const SmartFarmaLogic = (() => {
                                     ${!isOnline && v.lastSeen ? `<small style="font-size: 0.75rem; color: var(--text-secondary);">Visto: ${lastSeenSafe}</small>` : ''}
                                 </div>
                             </div>
-                            <button onclick="window.SmartFarmaLogic.excluirVendedor('${v.id}')" class="btn-excluir ripple-trigger" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">Excluir</button>
+                            <button data-action="excluir-vendedor" data-id="${v.id}" class="btn-excluir ripple-trigger" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">Excluir</button>
                         </div>
                     </div>
                     `;
@@ -1186,9 +1236,9 @@ const SmartFarmaLogic = (() => {
                         </div>
                         ${isPendente ? `
                             <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; width: 100%;">
-                                <button onclick="window.SmartFarmaLogic.aprovarSangria('${s.id}', '${lojaId}')" style="flex: 1; min-width: 80px; background-color: #2e7d32; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">ACEITAR</button>
-                                <button onclick="window.SmartFarmaLogic.abrirModal('${s.id}', 'editar', '${lojaId}', ${s.valor})" style="flex: 1; min-width: 80px; background-color: #f57c00; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">EDITAR</button>
-                                <button onclick="window.SmartFarmaLogic.abrirModal('${s.id}', 'recusar', '${lojaId}', ${s.valor})" style="flex: 1; min-width: 80px; background-color: transparent; color: #c62828; border: 2px solid #c62828; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">RECUSAR</button>
+                                <button data-action="aprovar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" style="flex: 1; min-width: 80px; background-color: #2e7d32; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">ACEITAR</button>
+                                <button data-action="editar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" data-valor="${Number(s.valor)}" style="flex: 1; min-width: 80px; background-color: #f57c00; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">EDITAR</button>
+                                <button data-action="recusar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" data-valor="${Number(s.valor)}" style="flex: 1; min-width: 80px; background-color: transparent; color: #c62828; border: 2px solid #c62828; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">RECUSAR</button>
                             </div>
                         ` : ''}
                     </div>
