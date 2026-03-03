@@ -21,13 +21,33 @@ const SmartFarmaLogic = (() => {
 
     const getFB = () => ({ db: window.FirebaseDB, ...window.FirebaseModules });
 
-    const waitForFirebase = (callback) => {
+    const escapeHtml = (value = '') => String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+    const escapeJsString = (value = '') => String(value)
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ');
+
+    const safeStatusClass = (value = '') => String(value).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+
+    const waitForFirebase = (callback, attempts = 0) => {
         if (window.FirebaseDB && window.FirebaseModules) {
             callback();
-        } else {
-            Logger.info("A aguardar ligação à Nuvem do Firebase...");
-            setTimeout(() => waitForFirebase(callback), 150);
+            return;
         }
+        if (attempts >= 80) {
+            Logger.error('Timeout ao ligar ao Firebase.');
+            Toast.error('Não foi possível ligar ao Firebase. Atualize a página.');
+            return;
+        }
+        if (attempts % 10 === 0) Logger.info('A aguardar ligação à Nuvem do Firebase...');
+        setTimeout(() => waitForFirebase(callback, attempts + 1), 150);
     };
 
     const initDB = async () => {
@@ -37,16 +57,20 @@ const SmartFarmaLogic = (() => {
             
             localStorage.removeItem('sf_data_users'); 
             
-            const hashedMasterPass = await Security.hashPassword('123');
-
-            await setDoc(doc(db, CONFIG.COLLECTIONS.USERS, "admin_master"), {
-                nome: 'Admin Master', 
-                usuario: 'admin', 
-                senha: hashedMasterPass,
-                tipo: CONFIG.ROLES.ADMIN, 
-                isMaster: true, 
-                loja_id: null
-            });
+            const usersSnap = await getDocs(collection(db, CONFIG.COLLECTIONS.USERS));
+            const adminMasterExiste = usersSnap.docs.some(u => u.id === 'admin_master');
+            if (!adminMasterExiste) {
+                const hashedMasterPass = await Security.hashPassword('123');
+                await setDoc(doc(db, CONFIG.COLLECTIONS.USERS, 'admin_master'), {
+                    nome: 'Admin Master',
+                    usuario: 'admin',
+                    senha: hashedMasterPass,
+                    tipo: CONFIG.ROLES.ADMIN,
+                    isMaster: true,
+                    loja_id: null
+                });
+                Logger.warn('Utilizador admin_master criado com a senha temporária padrão. Altere-a imediatamente.');
+            }
 
             const lojasSnap = await getDocs(collection(db, CONFIG.COLLECTIONS.LOJAS));
             if (lojasSnap.empty || lojasSnap.size < 3) {
@@ -580,7 +604,10 @@ const SmartFarmaLogic = (() => {
 
         container.innerHTML = filtradas.map(s => {
             const statusAtual = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
-            const statusExibicao = s.status || 'Pendente';
+            const statusClass = safeStatusClass(statusAtual) || 'pendente';
+            const statusExibicao = escapeHtml(s.status || 'Pendente');
+            const dataSafe = escapeHtml(s.data || '');
+            const motivoSafe = escapeHtml(s.motivo || '');
 
             return `
             <div class="item-card tilt-element" style="flex-direction: column; align-items: flex-start; animation: fadeIn 0.4s ease forwards;">
@@ -588,11 +615,11 @@ const SmartFarmaLogic = (() => {
                     <div>
                         <strong style="font-size: 1.1rem; color: var(--text-primary);">R$ ${Number(s.valor).toFixed(2)}</strong>
                         ${statusAtual === 'modificado' ? `<small style="text-decoration: line-through; color: var(--text-secondary); margin-left: 10px;">R$ ${Number(s.valorOriginal).toFixed(2)}</small>` : ''}
-                        <div style="font-size: 0.8rem; color: var(--text-secondary)">${s.data || ''}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary)">${dataSafe}</div>
                     </div>
-                    <span class="status-badge status-${statusAtual}">${statusExibicao}</span>
+                    <span class="status-badge status-${statusClass}">${statusExibicao}</span>
                 </div>
-                ${s.motivo ? `<div class="motivo-box"><strong>Mensagem do Escritório:</strong><br>${s.motivo}</div>` : ''}
+                ${s.motivo ? `<div class="motivo-box"><strong>Mensagem do Escritório:</strong><br>${motivoSafe}</div>` : ''}
             </div>
             `;
         }).join('');
@@ -612,6 +639,10 @@ const SmartFarmaLogic = (() => {
         container.innerHTML = meusBoletos.map(b => {
             let diferencaHtml = '';
             const statusAtual = b.status ? String(b.status).toLowerCase().trim() : 'pendente';
+            const descricaoJs = escapeJsString(b.descricao || '');
+            const numeroBoletoSafe = escapeHtml(b.numero_boleto || 'N/A');
+            const dataEmissaoSafe = escapeHtml(b.data_emissao || 'Sem data');
+            const obsVendedorSafe = escapeHtml(b.observacao_vendedor || '');
 
             // Tratamento das Diferenças e Juros quando PAGO
             if (statusAtual === 'pago') {
@@ -632,14 +663,14 @@ const SmartFarmaLogic = (() => {
             } else if (statusAtual === 'confirmado') {
                 bordaCard = '#c62828';
                 statusBadge = '<span class="status-badge status-recusado">A PAGAR</span>';
-                acoesHtml = `<button onclick="window.SmartFarmaLogic.abrirModalBoleto('${b.id}', '${b.descricao}', ${b.valor_original})" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
+                acoesHtml = `<button onclick="window.SmartFarmaLogic.abrirModalBoleto('${b.id}', '${descricaoJs}', ${b.valor_original})" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
             } else {
                 bordaCard = '#2e7d32';
                 statusBadge = '<span class="status-badge status-aprovado">PAGO</span>';
                 acoesHtml = `
                     <div style="margin-top: 1rem; padding-top: 0.5rem; border-top: 1px dashed var(--glass-border); width: 100%;">
                         <span style="font-size: 0.9rem;">Informou pagamento de: <strong>R$ ${Number(b.valor_pago).toFixed(2)}</strong> ${diferencaHtml}</span>
-                        ${b.observacao_vendedor ? `<div class="motivo-box" style="margin-top:0.5rem; border-left-color: #2e7d32;"><strong>A sua Obs:</strong> ${b.observacao_vendedor}</div>` : ''}
+                        ${b.observacao_vendedor ? `<div class="motivo-box" style="margin-top:0.5rem; border-left-color: #2e7d32;"><strong>A sua Obs:</strong> ${obsVendedorSafe}</div>` : ''}
                     </div>
                 `;
             }
@@ -649,9 +680,9 @@ const SmartFarmaLogic = (() => {
                 <div style="display: flex; justify-content: space-between; width: 100%;">
                     <div>
                         <strong style="font-size: 1.1rem;">Boleto Enviado pelo Escritório</strong><br>
-                        <span style="font-size: 0.9rem;">Nº Boleto: <strong style="color: var(--accent-2);">${b.numero_boleto || 'N/A'}</strong></span><br>
+                        <span style="font-size: 0.9rem;">Nº Boleto: <strong style="color: var(--accent-2);">${numeroBoletoSafe}</strong></span><br>
                         <span style="font-size: 0.9rem;">Valor Emitido: <strong>R$ ${Number(b.valor_original).toFixed(2)}</strong></span>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary)">Enviado em: ${b.data_emissao}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary)">Enviado em: ${dataEmissaoSafe}</div>
                     </div>
                     <div style="text-align: right;">
                         ${statusBadge}
@@ -796,15 +827,20 @@ const SmartFarmaLogic = (() => {
             listaReq.innerHTML = solicitacoes.map(req => {
                 const lojaDesejada = lojas.find(l => l.id === req.loja_id);
                 const nomeLoja = lojaDesejada ? lojaDesejada.nome : 'Não definida';
+                const reqNomeSafe = escapeHtml(req.nome);
+                const reqUsuarioSafe = escapeHtml(req.usuario);
+                const nomeLojaSafe = escapeHtml(nomeLoja);
+                const reqNomeJs = escapeJsString(req.nome);
+                const reqUsuarioJs = escapeJsString(req.usuario);
 
                 return `
                 <li style="background: rgba(13, 71, 161, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--accent-2); gap: 10px; flex-wrap: wrap;">
                     <div style="font-size: 0.9rem;">
-                        <strong style="color: var(--text-primary);">${req.nome}</strong><br>
-                        <small style="color: var(--text-secondary);">Login: ${req.usuario} | Loja: <strong>${nomeLoja}</strong></small>
+                        <strong style="color: var(--text-primary);">${reqNomeSafe}</strong><br>
+                        <small style="color: var(--text-secondary);">Login: ${reqUsuarioSafe} | Loja: <strong>${nomeLojaSafe}</strong></small>
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button onclick="window.SmartFarmaLogic.abrirModalAprovacao('${req.id}', '${req.nome}', '${req.usuario}', '${req.loja_id}')" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
+                        <button onclick="window.SmartFarmaLogic.abrirModalAprovacao('${req.id}', '${reqNomeJs}', '${reqUsuarioJs}', '${req.loja_id}')" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
                         <button onclick="window.SmartFarmaLogic.excluirSolicitacao('${req.id}')" class="btn-excluir ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Excluir</button>
                     </div>
                 </li>
@@ -870,6 +906,9 @@ const SmartFarmaLogic = (() => {
                 const loja = lojas.find(l => l.id === s.loja_id);
                 const nomeVendedor = vendedor ? vendedor.nome.split(' ')[0] : 'Desconhecido';
                 const nomeLoja = loja ? loja.nome : '';
+                const nomeVendedorSafe = escapeHtml(nomeVendedor);
+                const nomeLojaSafe = escapeHtml(nomeLoja);
+                const dataSafe = escapeHtml(s.data || '');
                 const statusAtual = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
 
                 let acaoTexto = '';
@@ -878,7 +917,7 @@ const SmartFarmaLogic = (() => {
                 else if (statusAtual === 'modificado') acaoTexto = `teve o valor corrigido para <strong>R$ ${Number(s.valor).toFixed(2)}</strong>.`;
                 else acaoTexto = `enviou <strong>R$ ${Number(s.valor).toFixed(2)}</strong> para análise.`;
 
-                return `<li style="animation: fadeIn 0.4s ease ${index * 0.1}s forwards; opacity: 0;"><strong>${nomeVendedor}</strong> (${nomeLoja}) ${acaoTexto} <br><small style="opacity: 0.6">${s.data || ''}</small></li>`;
+                return `<li style="animation: fadeIn 0.4s ease ${index * 0.1}s forwards; opacity: 0;"><strong>${nomeVendedorSafe}</strong> (${nomeLojaSafe}) ${acaoTexto} <br><small style="opacity: 0.6">${dataSafe}</small></li>`;
             }).join('');
         }
 
@@ -898,10 +937,12 @@ const SmartFarmaLogic = (() => {
             // Boletos pendentes (inclui os não confirmados pela loja)
             const boletosPendentes = boletos.filter(b => b.loja_id === loja.id && (b.status ? String(b.status).toLowerCase().trim() : 'pendente') !== 'pago').length;
 
+            const lojaNomeSafe = escapeHtml(loja.nome || 'Loja');
+            const lojaNomeJs = escapeJsString(loja.nome || 'Loja');
             return `
-                <div class="glass-panel loja-card tilt-element" onclick="window.SmartFarmaLogic.abrirLoja('${loja.id}', '${loja.nome}')" style="view-transition-name: loja-card-${loja.id};">
+                <div class="glass-panel loja-card tilt-element" onclick="window.SmartFarmaLogic.abrirLoja('${loja.id}', '${lojaNomeJs}')" style="view-transition-name: loja-card-${loja.id};">
                     <div>
-                        <h3 style="color: var(--accent-3);">${loja.nome}</h3>
+                        <h3 style="color: var(--accent-3);">${lojaNomeSafe}</h3>
                         <div class="loja-info">
                             <span>Sangrias Pendentes: <strong class="text-yellow">${pendentesLoja}</strong></span>
                             <span>Boletos: <strong class="text-red">${boletosPendentes}</strong></span>
@@ -926,12 +967,16 @@ const SmartFarmaLogic = (() => {
                     const loja = lojas.find(l => l.id === v.loja_id);
                     const nomeLoja = loja ? loja.nome : 'Sem Loja';
                     const isOnline = v.isOnline === true;
+                    const nomeVSafe = escapeHtml(v.nome || 'Sem nome');
+                    const nomeLojaSafe = escapeHtml(nomeLoja);
+                    const usuarioSafe = escapeHtml(v.usuario || '');
+                    const lastSeenSafe = escapeHtml(v.lastSeen || '');
                     
                     return `
                     <div class="glass-panel vendedor-card tilt-element" style="padding: 1.2rem; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 1rem;">
                         <div>
-                            <strong style="color: var(--text-primary); font-size: 1.1rem;">${v.nome}</strong><br>
-                            <small style="color: var(--text-secondary);">Loja: <strong>${nomeLoja}</strong> | Usuário: ${v.usuario}</small>
+                            <strong style="color: var(--text-primary); font-size: 1.1rem;">${nomeVSafe}</strong><br>
+                            <small style="color: var(--text-secondary);">Loja: <strong>${nomeLojaSafe}</strong> | Usuário: ${usuarioSafe}</small>
                         </div>
                         <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--glass-border); padding-top: 0.8rem;">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -940,7 +985,7 @@ const SmartFarmaLogic = (() => {
                                     <span style="font-size: 0.85rem; font-weight: bold; color: ${isOnline ? '#2e7d32' : 'var(--text-secondary)'};">
                                         ${isOnline ? 'Online agora' : 'Offline'}
                                     </span>
-                                    ${!isOnline && v.lastSeen ? `<small style="font-size: 0.75rem; color: var(--text-secondary);">Visto: ${v.lastSeen}</small>` : ''}
+                                    ${!isOnline && v.lastSeen ? `<small style="font-size: 0.75rem; color: var(--text-secondary);">Visto: ${lastSeenSafe}</small>` : ''}
                                 </div>
                             </div>
                             <button onclick="window.SmartFarmaLogic.excluirVendedor('${v.id}')" class="btn-excluir ripple-trigger" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">Excluir</button>
@@ -1000,7 +1045,7 @@ const SmartFarmaLogic = (() => {
         
         let lojasHtml = '<option value="">-- Selecione a Loja --</option>';
         dbCache.lojas.forEach(l => {
-            lojasHtml += `<option value="${l.id}" ${l.id === loja_id ? 'selected' : ''}>${l.nome}</option>`;
+            lojasHtml += `<option value="${l.id}" ${l.id === loja_id ? 'selected' : ''}>${escapeHtml(l.nome)}</option>`;
         });
         document.getElementById('modalReqLoja').innerHTML = lojasHtml;
         document.getElementById('aprovarAcessoModal').classList.remove('hidden');
@@ -1019,7 +1064,7 @@ const SmartFarmaLogic = (() => {
         const vendedoresDaLoja = dbCache.users.filter(u => u.loja_id === lojaId);
         
         let vendHtml = '';
-        vendedoresDaLoja.forEach(v => vendHtml += `<li>${v.nome}</li>`);
+        vendedoresDaLoja.forEach(v => vendHtml += `<li>${escapeHtml(v.nome || 'Sem nome')}</li>`);
         document.getElementById('listaVendedoresLoja').innerHTML = vendHtml || '<li>Nenhum vendedor</li>';
 
         alternarViewAdmin('detalhe');
@@ -1049,24 +1094,29 @@ const SmartFarmaLogic = (() => {
                 const vendedor = users.find(u => u.id === s.vendedor_id);
                 
                 const statusLimpo = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
-                const statusExibicao = s.status || 'Pendente';
-                
+                const statusClass = safeStatusClass(statusLimpo) || 'pendente';
+                const statusExibicao = escapeHtml(s.status || 'Pendente');
+                const vendedorNomeSafe = escapeHtml(vendedor ? vendedor.nome : 'Desconhecido');
+                const dataSafe = escapeHtml(s.data || 'Sem Data');
+                const observacaoSafe = escapeHtml(s.observacao || '');
+                const motivoSafe = escapeHtml(s.motivo || '');
+
                 const isPendente = (statusLimpo !== 'aprovado' && statusLimpo !== 'modificado' && statusLimpo !== 'recusado');
                 
                 return `
                     <div class="item-card" id="sangria-card-${s.id}" style="flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; animation: fadeIn 0.4s ease ${idx * 0.05}s forwards; opacity: 0;">
                         <div style="width: 100%; display: flex; justify-content: space-between;">
-                            <span class="status-badge status-${statusLimpo}">${statusExibicao}</span>
+                            <span class="status-badge status-${statusClass}">${statusExibicao}</span>
                             <div style="text-align: right;">
                                 <strong>R$ ${Number(s.valor).toFixed(2)}</strong>
                                 ${statusLimpo === 'modificado' ? `<br><small style="text-decoration: line-through; color: var(--text-secondary);">R$ ${Number(s.valorOriginal).toFixed(2)}</small>` : ''}
                             </div>
                         </div>
                         <div style="font-size: 0.9rem; color: var(--text-secondary); width: 100%;">
-                            <strong>Vendedor:</strong> ${vendedor ? vendedor.nome : 'Desconhecido'} <br>
-                            <strong>Data:</strong> ${s.data || 'Sem Data'} <br>
-                            ${s.observacao ? `<strong>Obs:</strong> ${s.observacao}` : ''}
-                            ${s.motivo ? `<div class="motivo-box">${s.motivo}</div>` : ''}
+                            <strong>Vendedor:</strong> ${vendedorNomeSafe} <br>
+                            <strong>Data:</strong> ${dataSafe} <br>
+                            ${s.observacao ? `<strong>Obs:</strong> ${observacaoSafe}` : ''}
+                            ${s.motivo ? `<div class="motivo-box">${motivoSafe}</div>` : ''}
                         </div>
                         ${isPendente ? `
                             <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; width: 100%;">
@@ -1086,7 +1136,14 @@ const SmartFarmaLogic = (() => {
             containerBoletos.innerHTML = boletosLoja.map((b, idx) => {
                 const vendedorPagou = users.find(u => u.id === b.vendedor_id);
                 let diferencaHtml = '';
-                
+
+                const numeroBoletoSafe = escapeHtml(b.numero_boleto || 'Sem Registro');
+                const dataEmissaoSafe = escapeHtml(b.data_emissao || 'Sem data');
+                const dataConfirmacaoSafe = escapeHtml(b.data_confirmacao || 'Sem data');
+                const dataPagamentoSafe = escapeHtml(b.data_pagamento || 'Sem data');
+                const vendedorPagouSafe = escapeHtml(vendedorPagou ? vendedorPagou.nome : 'Desconhecido');
+                const obsVendedorSafe = escapeHtml(b.observacao_vendedor || '');
+
                 const statusLimpo = b.status ? String(b.status).toLowerCase().trim() : 'pendente';
                 
                 let borda = '#ff8f00';
@@ -1114,22 +1171,22 @@ const SmartFarmaLogic = (() => {
                 return `
                     <div class="item-card" style="flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; border-left: 4px solid ${borda}; animation: fadeIn 0.4s ease ${idx * 0.05}s forwards; opacity: 0;">
                         <div style="width: 100%; display: flex; justify-content: space-between;">
-                            <strong style="color: var(--text-primary);">Nº ${b.numero_boleto || 'Sem Registro'}</strong>
+                            <strong style="color: var(--text-primary);">Nº ${numeroBoletoSafe}</strong>
                             <span class="status-badge ${classeBadge}">${txtStatus}</span>
                         </div>
                         <div style="font-size: 0.9rem; color: var(--text-secondary); width: 100%;">
                             Valor Original: <strong>R$ ${Number(b.valor_original).toFixed(2)}</strong> <br>
-                            Lançado em: ${b.data_emissao}
+                            Lançado em: ${dataEmissaoSafe}
                         </div>
                         
-                        ${statusLimpo === 'confirmado' ? `<small style="color: #ff8f00;">Loja confirmou recebimento em: ${b.data_confirmacao}</small>` : ''}
+                        ${statusLimpo === 'confirmado' ? `<small style="color: #ff8f00;">Loja confirmou recebimento em: ${dataConfirmacaoSafe}</small>` : ''}
 
                         ${isPago ? `
                             <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--glass-border); width: 100%; font-size: 0.9rem;">
-                                Pago por: <strong>${vendedorPagou ? vendedorPagou.nome : 'Desconhecido'}</strong> em ${b.data_pagamento}<br>
+                                Pago por: <strong>${vendedorPagouSafe}</strong> em ${dataPagamentoSafe}<br>
                                 Valor Retirado: <strong>R$ ${Number(b.valor_pago).toFixed(2)}</strong><br>
                                 ${diferencaHtml}<br>
-                                ${b.observacao_vendedor ? `<strong>Obs da Loja:</strong> ${b.observacao_vendedor}` : ''}
+                                ${b.observacao_vendedor ? `<strong>Obs da Loja:</strong> ${obsVendedorSafe}` : ''}
                             </div>
                         ` : ''}
                     </div>

@@ -24,11 +24,15 @@ export const Toast = {
             info: 'ℹ️'
         };
 
-        toast.innerHTML = `
-            <span style="font-size: 1.2rem;">${icons[type]}</span>
-            <span>${message}</span>
-        `;
+        const iconEl = document.createElement('span');
+        iconEl.style.fontSize = '1.2rem';
+        iconEl.textContent = icons[type] || icons.info;
 
+        const textEl = document.createElement('span');
+        textEl.textContent = String(message ?? '');
+
+        toast.appendChild(iconEl);
+        toast.appendChild(textEl);
         container.appendChild(toast);
 
         // Remove automaticamente após o tempo definido

@@ -109,6 +109,7 @@ window.SmartFarmaInteractions = (() => {
     const initThemeToggle = () => {
         const btn = document.getElementById('themeToggleBtn');
         if (!btn) return;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
         // Recupera o estado
         const currentTheme = localStorage.getItem('smartfarma_theme');
@@ -126,7 +127,7 @@ window.SmartFarmaInteractions = (() => {
             };
 
             // Fallback imediato se não suportar View Transitions
-            if (!document.startViewTransition) {
+            if (!document.startViewTransition || reduceMotion) {
                 performThemeSwitch();
                 return;
             }
@@ -180,8 +181,9 @@ window.SmartFarmaInteractions = (() => {
 
     return {
         init: () => {
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             // Desativa Tilt no mobile para salvar bateria e focar em tap interactions
-            if (window.matchMedia("(min-width: 768px)").matches) {
+            if (!reduceMotion && window.matchMedia("(min-width: 768px)").matches) {
                 initTiltEffect();
             }
             initRipple();
