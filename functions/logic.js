@@ -21,13 +21,64 @@ const SmartFarmaLogic = (() => {
 
     const getFB = () => ({ db: window.FirebaseDB, ...window.FirebaseModules });
 
-    const waitForFirebase = (callback) => {
+    const escapeHtml = (value = '') => String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+    const safeStatusClass = (value = '') => String(value).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+
+    const sanitizeUsername = (value = '') => String(value).trim().replace(/\s+/g, '');
+
+    const hasStrongEnoughPassword = (value = '') => String(value).trim().length >= 6;
+
+
+    const isLowPerformanceDevice = (() => {
+        const memory = Number(navigator.deviceMemory || 0);
+        const cores = Number(navigator.hardwareConcurrency || 0);
+        const saveData = navigator.connection && navigator.connection.saveData === true;
+        return saveData || (memory > 0 && memory <= 2) || (cores > 0 && cores <= 2);
+    })();
+
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const LOGIN_THROTTLE_KEY = 'sf_login_throttle';
+    const getLoginThrottleState = () => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(LOGIN_THROTTLE_KEY) || '{}');
+            return {
+                fails: Number(parsed.fails) || 0,
+                blockedUntil: Number(parsed.blockedUntil) || 0
+            };
+        } catch {
+            return { fails: 0, blockedUntil: 0 };
+        }
+    };
+
+    const registerFailedLogin = () => {
+        const now = Date.now();
+        const state = getLoginThrottleState();
+        const fails = state.fails + 1;
+        const blockedUntil = fails >= 5 ? (now + 30_000) : 0;
+        localStorage.setItem(LOGIN_THROTTLE_KEY, JSON.stringify({ fails: blockedUntil ? 0 : fails, blockedUntil }));
+    };
+
+    const clearFailedLogins = () => localStorage.removeItem(LOGIN_THROTTLE_KEY);
+
+    const waitForFirebase = (callback, attempts = 0) => {
         if (window.FirebaseDB && window.FirebaseModules) {
             callback();
-        } else {
-            Logger.info("A aguardar ligação à Nuvem do Firebase...");
-            setTimeout(() => waitForFirebase(callback), 150);
+            return;
         }
+        if (attempts >= 80) {
+            Logger.error('Timeout ao ligar ao Firebase.');
+            Toast.error('Não foi possível ligar ao Firebase. Atualize a página.');
+            return;
+        }
+        if (attempts % 10 === 0) Logger.info('A aguardar ligação à Nuvem do Firebase...');
+        setTimeout(() => waitForFirebase(callback, attempts + 1), 150);
     };
 
     const initDB = async () => {
@@ -37,16 +88,20 @@ const SmartFarmaLogic = (() => {
             
             localStorage.removeItem('sf_data_users'); 
             
-            const hashedMasterPass = await Security.hashPassword('123');
-
-            await setDoc(doc(db, CONFIG.COLLECTIONS.USERS, "admin_master"), {
-                nome: 'Admin Master', 
-                usuario: 'admin', 
-                senha: hashedMasterPass,
-                tipo: CONFIG.ROLES.ADMIN, 
-                isMaster: true, 
-                loja_id: null
-            });
+            const usersSnap = await getDocs(collection(db, CONFIG.COLLECTIONS.USERS));
+            const adminMasterExiste = usersSnap.docs.some(u => u.id === 'admin_master');
+            if (!adminMasterExiste) {
+                const hashedMasterPass = await Security.hashPassword('123');
+                await setDoc(doc(db, CONFIG.COLLECTIONS.USERS, 'admin_master'), {
+                    nome: 'Admin Master',
+                    usuario: 'admin',
+                    senha: hashedMasterPass,
+                    tipo: CONFIG.ROLES.ADMIN,
+                    isMaster: true,
+                    loja_id: null
+                });
+                Logger.warn('Utilizador admin_master criado com a senha temporária padrão. Altere-a imediatamente.');
+            }
 
             const lojasSnap = await getDocs(collection(db, CONFIG.COLLECTIONS.LOJAS));
             if (lojasSnap.empty || lojasSnap.size < 3) {
@@ -63,6 +118,12 @@ const SmartFarmaLogic = (() => {
 
     const animateValue = (obj, start, end, duration, isCurrency = true) => {
         if (!obj) return;
+
+        if (isLowPerformanceDevice || prefersReducedMotion()) {
+            obj.textContent = isCurrency ? Number(end).toFixed(2) : String(Math.floor(Number(end)));
+            return;
+        }
+
         if (obj.animFrame) cancelAnimationFrame(obj.animFrame);
 
         let startTimestamp = null;
@@ -71,11 +132,11 @@ const SmartFarmaLogic = (() => {
             const progress = Math.min((timestamp - startTimestamp) / duration, 1);
             const easeOut = 1 - Math.pow(1 - progress, 4);
             const currentVal = easeOut * (end - start) + start;
-            obj.innerHTML = isCurrency ? currentVal.toFixed(2) : Math.floor(currentVal);
+            obj.textContent = isCurrency ? currentVal.toFixed(2) : String(Math.floor(currentVal));
             if (progress < 1) {
                 obj.animFrame = window.requestAnimationFrame(step);
             } else {
-                obj.innerHTML = isCurrency ? end.toFixed(2) : end;
+                obj.textContent = isCurrency ? Number(end).toFixed(2) : String(Math.floor(Number(end)));
             }
         };
         obj.animFrame = window.requestAnimationFrame(step);
@@ -83,6 +144,16 @@ const SmartFarmaLogic = (() => {
 
     const applyStaggerEffect = (selector) => {
         const elements = document.querySelectorAll(selector);
+
+        if (isLowPerformanceDevice || prefersReducedMotion()) {
+            elements.forEach((el) => {
+                el.style.opacity = '1';
+                el.style.transform = 'none';
+                el.style.animation = 'none';
+            });
+            return;
+        }
+
         elements.forEach((el, index) => {
             el.style.opacity = '0';
             el.style.transform = 'translateY(30px)';
@@ -133,13 +204,17 @@ const SmartFarmaLogic = (() => {
         const { db, collection, addDoc, getDocs, query, where } = getFB();
         
         const nome = document.getElementById('admNewNome').value.trim();
-        const user = document.getElementById('admNewUser').value.trim();
+        const user = sanitizeUsername(document.getElementById('admNewUser').value);
         const pass = document.getElementById('admNewPass').value.trim();
         const tipo = document.getElementById('admNewTipo').value;
         const lojaId = (tipo === CONFIG.ROLES.VENDEDOR) ? document.getElementById('admNewLoja').value : null;
 
         if(!nome || !user || !pass) {
             return Toast.warning("Preencha todos os campos obrigatórios.");
+        }
+
+        if (!hasStrongEnoughPassword(pass)) {
+            return Toast.warning('A senha deve ter no mínimo 6 caracteres.');
         }
 
         const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user));
@@ -256,8 +331,8 @@ const SmartFarmaLogic = (() => {
             const txtOriginal = btn.innerText;
             btn.innerText = "A validar..."; btn.disabled = true;
 
-            const targetUser = document.getElementById('resetTargetUser').value.trim();
-            const adminUser = document.getElementById('resetAdminUser').value.trim();
+            const targetUser = sanitizeUsername(document.getElementById('resetTargetUser').value);
+            const adminUser = sanitizeUsername(document.getElementById('resetAdminUser').value);
             const adminPass = document.getElementById('resetAdminPass').value.trim();
 
             try {
@@ -335,10 +410,22 @@ const SmartFarmaLogic = (() => {
             const btnSubmit = document.querySelector('#formRegister button[type="submit"]');
             btnSubmit.innerText = 'A enviar...'; btnSubmit.disabled = true;
 
-            const nome = document.getElementById('regNome').value;
-            const user = document.getElementById('regUser').value;
+            const nome = document.getElementById('regNome').value.trim();
+            const user = sanitizeUsername(document.getElementById('regUser').value);
             const lojaSelecionada = document.getElementById('regLoja').value; 
             const pass = document.getElementById('regPass').value;
+
+            if (!nome || !user || !lojaSelecionada || !pass) {
+                Toast.warning('Preencha todos os campos obrigatórios.');
+                btnSubmit.innerText = 'ENVIAR SOLICITAÇÃO'; btnSubmit.disabled = false;
+                return;
+            }
+
+            if (!hasStrongEnoughPassword(pass)) {
+                Toast.warning('A senha deve ter no mínimo 6 caracteres.');
+                btnSubmit.innerText = 'ENVIAR SOLICITAÇÃO'; btnSubmit.disabled = false;
+                return;
+            }
 
             const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user));
             const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user));
@@ -375,46 +462,69 @@ const SmartFarmaLogic = (() => {
             const textoOriginal = btnSubmit.innerText;
             btnSubmit.innerText = 'A validar...'; btnSubmit.style.opacity = '0.7'; btnSubmit.disabled = true;
 
-            const user = document.getElementById('loginUser').value;
+            const user = sanitizeUsername(document.getElementById('loginUser').value);
             const pass = document.getElementById('loginPass').value;
-            
-            const hashedPass = await Security.hashPassword(pass);
-            
-            const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user), where("senha", "==", hashedPass));
-            const usersSnap = await getDocs(qUsers);
 
-            if (!usersSnap.empty) {
-                const userDoc = usersSnap.docs[0];
-                Store.setUser({ id: userDoc.id, ...userDoc.data() });
-                
-                await atualizarStatusVendedor(Store.getUser().id);
-                
-                formLogin.reset();
-                feedbackLogin.innerText = '';
-                Toast.info(`Bem-vindo de volta, ${Store.getUser().nome.split(' ')[0]}!`);
+            const throttleState = getLoginThrottleState();
+            if (throttleState.blockedUntil > Date.now()) {
+                const segundos = Math.ceil((throttleState.blockedUntil - Date.now()) / 1000);
+                Toast.warning(`Muitas tentativas. Aguarde ${segundos}s para tentar novamente.`);
+                btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                return;
+            }
 
-                if (window.SmartFarmaAnimations && window.SmartFarmaAnimations.playLoginExperience) {
-                    btnSubmit.innerText = 'A Autenticar...';
-                    window.SmartFarmaAnimations.playLoginExperience(() => {
+            if (!user || !pass) {
+                Toast.warning('Informe usuário e senha.');
+                btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                return;
+            }
+
+            try {
+                const hashedPass = await Security.hashPassword(pass);
+                
+                const qUsers = query(collection(db, CONFIG.COLLECTIONS.USERS), where("usuario", "==", user), where("senha", "==", hashedPass));
+                const usersSnap = await getDocs(qUsers);
+
+                if (!usersSnap.empty) {
+                    clearFailedLogins();
+                    const userDoc = usersSnap.docs[0];
+                    Store.setUser({ id: userDoc.id, ...userDoc.data() });
+                    
+                    await atualizarStatusVendedor(Store.getUser().id);
+                    
+                    formLogin.reset();
+                    feedbackLogin.innerText = '';
+                    Toast.info(`Bem-vindo de volta, ${Store.getUser().nome.split(' ')[0]}!`);
+
+                    if (window.SmartFarmaAnimations && window.SmartFarmaAnimations.playLoginExperience) {
+                        btnSubmit.innerText = 'A Autenticar...';
+                        window.SmartFarmaAnimations.playLoginExperience(() => {
+                            btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
+                            if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
+                            else { navigateTo('view-admin'); loadAdminView(); }
+                        });
+                    } else {
                         btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
                         if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
                         else { navigateTo('view-admin'); loadAdminView(); }
-                    });
+                    }
                 } else {
-                    if (Store.getUser().tipo === CONFIG.ROLES.VENDEDOR) { navigateTo('view-vendedor'); loadVendedorView(); } 
-                    else { navigateTo('view-admin'); loadAdminView(); }
+                    registerFailedLogin();
+                    const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user), where("senha", "==", hashedPass), where("tipo", "==", CONFIG.REQ_TYPES.CADASTRO));
+                    if (!(await getDocs(qReq)).empty) {
+                        Toast.warning("A sua conta ainda está em análise pelo escritório.");
+                    } else {
+                        Toast.error("Credenciais inválidas. Tente novamente.");
+                    }
+                    
+                    formLogin.classList.add('shake-trigger');
+                    setTimeout(() => formLogin.classList.remove('shake-trigger'), 400);
+                    
+                    btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
                 }
-            } else {
-                const qReq = query(collection(db, CONFIG.COLLECTIONS.SOLICITACOES), where("usuario", "==", user), where("senha", "==", hashedPass), where("tipo", "==", CONFIG.REQ_TYPES.CADASTRO));
-                if (!(await getDocs(qReq)).empty) {
-                    Toast.warning("A sua conta ainda está em análise pelo escritório.");
-                } else {
-                    Toast.error("Credenciais inválidas. Tente novamente.");
-                }
-                
-                formLogin.classList.add('shake-trigger');
-                setTimeout(() => formLogin.classList.remove('shake-trigger'), 400);
-                
+            } catch (error) {
+                Logger.error('Erro durante autenticação', error);
+                Toast.error('Falha na autenticação. Tente novamente.');
                 btnSubmit.innerText = textoOriginal; btnSubmit.style.opacity = '1'; btnSubmit.disabled = false;
             }
         });
@@ -436,6 +546,62 @@ const SmartFarmaLogic = (() => {
 
             Toast.info("Sessão encerrada com segurança.");
             navigateTo('view-login');
+        });
+
+        const btnAbrirModalNovoUsuario = document.getElementById('btnAbrirModalNovoUsuario');
+        if (btnAbrirModalNovoUsuario) {
+            btnAbrirModalNovoUsuario.addEventListener('click', abrirModalNovoUsuario);
+        }
+
+        const btnFecharModalAprovacao = document.getElementById('btnFecharModalAprovacao');
+        if (btnFecharModalAprovacao) {
+            btnFecharModalAprovacao.addEventListener('click', fecharModalAprovacao);
+        }
+
+        const btnConfirmarAcesso = document.getElementById('btnConfirmarAcesso');
+        if (btnConfirmarAcesso) {
+            btnConfirmarAcesso.addEventListener('click', confirmarAprovacaoAcesso);
+        }
+
+        const admNewTipo = document.getElementById('admNewTipo');
+        if (admNewTipo) {
+            admNewTipo.addEventListener('change', toggleLojaSelection);
+        }
+
+        const btnFecharModalNovoUsuario = document.getElementById('btnFecharModalNovoUsuario');
+        if (btnFecharModalNovoUsuario) {
+            btnFecharModalNovoUsuario.addEventListener('click', fecharModalNovoUsuario);
+        }
+
+        const btnSalvarNovoUsuario = document.getElementById('btnSalvarNovoUsuario');
+        if (btnSalvarNovoUsuario) {
+            btnSalvarNovoUsuario.addEventListener('click', salvarNovoUsuario);
+        }
+
+        document.addEventListener('click', (event) => {
+            const actionEl = event.target.closest('[data-action]');
+            if (!actionEl) return;
+
+            const { action, id, lojaId, nome, usuario, desc, valor } = actionEl.dataset;
+
+            if (action === 'confirmar-recebimento-boleto' && id) {
+                confirmarRecebimentoBoleto(id);
+            } else if (action === 'abrir-modal-boleto' && id) {
+                abrirModalBoleto(id, desc || '', Number(valor));
+            } else if (action === 'abrir-modal-aprovacao' && id) {
+                abrirModalAprovacao(id, nome || '', usuario || '', lojaId || '');
+            } else if (action === 'excluir-solicitacao' && id) {
+                excluirSolicitacao(id);
+            } else if (action === 'abrir-loja' && lojaId) {
+                abrirLoja(lojaId, nome || 'Loja');
+            } else if (action === 'excluir-vendedor' && id) {
+                excluirVendedor(id);
+            } else if (action === 'aprovar-sangria' && id && lojaId) {
+                aprovarSangria(id, lojaId);
+            } else if ((action === 'editar-sangria' || action === 'recusar-sangria') && id && lojaId) {
+                const tipoAcao = action === 'editar-sangria' ? 'editar' : 'recusar';
+                abrirModal(id, tipoAcao, lojaId, Number(valor));
+            }
         });
     };
 
@@ -580,7 +746,10 @@ const SmartFarmaLogic = (() => {
 
         container.innerHTML = filtradas.map(s => {
             const statusAtual = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
-            const statusExibicao = s.status || 'Pendente';
+            const statusClass = safeStatusClass(statusAtual) || 'pendente';
+            const statusExibicao = escapeHtml(s.status || 'Pendente');
+            const dataSafe = escapeHtml(s.data || '');
+            const motivoSafe = escapeHtml(s.motivo || '');
 
             return `
             <div class="item-card tilt-element" style="flex-direction: column; align-items: flex-start; animation: fadeIn 0.4s ease forwards;">
@@ -588,11 +757,11 @@ const SmartFarmaLogic = (() => {
                     <div>
                         <strong style="font-size: 1.1rem; color: var(--text-primary);">R$ ${Number(s.valor).toFixed(2)}</strong>
                         ${statusAtual === 'modificado' ? `<small style="text-decoration: line-through; color: var(--text-secondary); margin-left: 10px;">R$ ${Number(s.valorOriginal).toFixed(2)}</small>` : ''}
-                        <div style="font-size: 0.8rem; color: var(--text-secondary)">${s.data || ''}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary)">${dataSafe}</div>
                     </div>
-                    <span class="status-badge status-${statusAtual}">${statusExibicao}</span>
+                    <span class="status-badge status-${statusClass}">${statusExibicao}</span>
                 </div>
-                ${s.motivo ? `<div class="motivo-box"><strong>Mensagem do Escritório:</strong><br>${s.motivo}</div>` : ''}
+                ${s.motivo ? `<div class="motivo-box"><strong>Mensagem do Escritório:</strong><br>${motivoSafe}</div>` : ''}
             </div>
             `;
         }).join('');
@@ -612,6 +781,10 @@ const SmartFarmaLogic = (() => {
         container.innerHTML = meusBoletos.map(b => {
             let diferencaHtml = '';
             const statusAtual = b.status ? String(b.status).toLowerCase().trim() : 'pendente';
+            const descricaoSafe = escapeHtml(b.descricao || '');
+            const numeroBoletoSafe = escapeHtml(b.numero_boleto || 'N/A');
+            const dataEmissaoSafe = escapeHtml(b.data_emissao || 'Sem data');
+            const obsVendedorSafe = escapeHtml(b.observacao_vendedor || '');
 
             // Tratamento das Diferenças e Juros quando PAGO
             if (statusAtual === 'pago') {
@@ -628,18 +801,18 @@ const SmartFarmaLogic = (() => {
             if (statusAtual === 'pendente') {
                 bordaCard = '#ff8f00';
                 statusBadge = '<span class="status-badge status-pendente">NOVO BOLETO (CONFERIR)</span>';
-                acoesHtml = `<button onclick="window.SmartFarmaLogic.confirmarRecebimentoBoleto('${b.id}')" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: #ff8f00; border: none;">Acabei de conferir</button>`;
+                acoesHtml = `<button data-action="confirmar-recebimento-boleto" data-id="${b.id}" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: #ff8f00; border: none;">Acabei de conferir</button>`;
             } else if (statusAtual === 'confirmado') {
                 bordaCard = '#c62828';
                 statusBadge = '<span class="status-badge status-recusado">A PAGAR</span>';
-                acoesHtml = `<button onclick="window.SmartFarmaLogic.abrirModalBoleto('${b.id}', '${b.descricao}', ${b.valor_original})" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
+                acoesHtml = `<button data-action="abrir-modal-boleto" data-id="${b.id}" data-desc="${descricaoSafe}" data-valor="${Number(b.valor_original)}" class="btn-primary ripple-trigger mt-1" style="padding: 0.4rem 1rem; font-size: 0.85rem; background: var(--accent-1);">Informar Pagamento Efetuado</button>`;
             } else {
                 bordaCard = '#2e7d32';
                 statusBadge = '<span class="status-badge status-aprovado">PAGO</span>';
                 acoesHtml = `
                     <div style="margin-top: 1rem; padding-top: 0.5rem; border-top: 1px dashed var(--glass-border); width: 100%;">
                         <span style="font-size: 0.9rem;">Informou pagamento de: <strong>R$ ${Number(b.valor_pago).toFixed(2)}</strong> ${diferencaHtml}</span>
-                        ${b.observacao_vendedor ? `<div class="motivo-box" style="margin-top:0.5rem; border-left-color: #2e7d32;"><strong>A sua Obs:</strong> ${b.observacao_vendedor}</div>` : ''}
+                        ${b.observacao_vendedor ? `<div class="motivo-box" style="margin-top:0.5rem; border-left-color: #2e7d32;"><strong>A sua Obs:</strong> ${obsVendedorSafe}</div>` : ''}
                     </div>
                 `;
             }
@@ -649,9 +822,9 @@ const SmartFarmaLogic = (() => {
                 <div style="display: flex; justify-content: space-between; width: 100%;">
                     <div>
                         <strong style="font-size: 1.1rem;">Boleto Enviado pelo Escritório</strong><br>
-                        <span style="font-size: 0.9rem;">Nº Boleto: <strong style="color: var(--accent-2);">${b.numero_boleto || 'N/A'}</strong></span><br>
+                        <span style="font-size: 0.9rem;">Nº Boleto: <strong style="color: var(--accent-2);">${numeroBoletoSafe}</strong></span><br>
                         <span style="font-size: 0.9rem;">Valor Emitido: <strong>R$ ${Number(b.valor_original).toFixed(2)}</strong></span>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary)">Enviado em: ${b.data_emissao}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary)">Enviado em: ${dataEmissaoSafe}</div>
                     </div>
                     <div style="text-align: right;">
                         ${statusBadge}
@@ -796,16 +969,21 @@ const SmartFarmaLogic = (() => {
             listaReq.innerHTML = solicitacoes.map(req => {
                 const lojaDesejada = lojas.find(l => l.id === req.loja_id);
                 const nomeLoja = lojaDesejada ? lojaDesejada.nome : 'Não definida';
+                const reqNomeSafe = escapeHtml(req.nome);
+                const reqUsuarioSafe = escapeHtml(req.usuario);
+                const nomeLojaSafe = escapeHtml(nomeLoja);
+                const reqNomeAttr = escapeHtml(req.nome || '');
+                const reqUsuarioAttr = escapeHtml(req.usuario || '');
 
                 return `
                 <li style="background: rgba(13, 71, 161, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--accent-2); gap: 10px; flex-wrap: wrap;">
                     <div style="font-size: 0.9rem;">
-                        <strong style="color: var(--text-primary);">${req.nome}</strong><br>
-                        <small style="color: var(--text-secondary);">Login: ${req.usuario} | Loja: <strong>${nomeLoja}</strong></small>
+                        <strong style="color: var(--text-primary);">${reqNomeSafe}</strong><br>
+                        <small style="color: var(--text-secondary);">Login: ${reqUsuarioSafe} | Loja: <strong>${nomeLojaSafe}</strong></small>
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button onclick="window.SmartFarmaLogic.abrirModalAprovacao('${req.id}', '${req.nome}', '${req.usuario}', '${req.loja_id}')" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
-                        <button onclick="window.SmartFarmaLogic.excluirSolicitacao('${req.id}')" class="btn-excluir ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Excluir</button>
+                        <button data-action="abrir-modal-aprovacao" data-id="${req.id}" data-nome="${reqNomeAttr}" data-usuario="${reqUsuarioAttr}" data-loja-id="${req.loja_id || ''}" class="btn-primary ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Avaliar</button>
+                        <button data-action="excluir-solicitacao" data-id="${req.id}" class="btn-excluir ripple-trigger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px;">Excluir</button>
                     </div>
                 </li>
                 `;
@@ -870,6 +1048,9 @@ const SmartFarmaLogic = (() => {
                 const loja = lojas.find(l => l.id === s.loja_id);
                 const nomeVendedor = vendedor ? vendedor.nome.split(' ')[0] : 'Desconhecido';
                 const nomeLoja = loja ? loja.nome : '';
+                const nomeVendedorSafe = escapeHtml(nomeVendedor);
+                const nomeLojaSafe = escapeHtml(nomeLoja);
+                const dataSafe = escapeHtml(s.data || '');
                 const statusAtual = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
 
                 let acaoTexto = '';
@@ -878,7 +1059,7 @@ const SmartFarmaLogic = (() => {
                 else if (statusAtual === 'modificado') acaoTexto = `teve o valor corrigido para <strong>R$ ${Number(s.valor).toFixed(2)}</strong>.`;
                 else acaoTexto = `enviou <strong>R$ ${Number(s.valor).toFixed(2)}</strong> para análise.`;
 
-                return `<li style="animation: fadeIn 0.4s ease ${index * 0.1}s forwards; opacity: 0;"><strong>${nomeVendedor}</strong> (${nomeLoja}) ${acaoTexto} <br><small style="opacity: 0.6">${s.data || ''}</small></li>`;
+                return `<li style="animation: fadeIn 0.4s ease ${index * 0.1}s forwards; opacity: 0;"><strong>${nomeVendedorSafe}</strong> (${nomeLojaSafe}) ${acaoTexto} <br><small style="opacity: 0.6">${dataSafe}</small></li>`;
             }).join('');
         }
 
@@ -898,10 +1079,12 @@ const SmartFarmaLogic = (() => {
             // Boletos pendentes (inclui os não confirmados pela loja)
             const boletosPendentes = boletos.filter(b => b.loja_id === loja.id && (b.status ? String(b.status).toLowerCase().trim() : 'pendente') !== 'pago').length;
 
+            const lojaNomeSafe = escapeHtml(loja.nome || 'Loja');
+            const lojaNomeAttr = escapeHtml(loja.nome || 'Loja');
             return `
-                <div class="glass-panel loja-card tilt-element" onclick="window.SmartFarmaLogic.abrirLoja('${loja.id}', '${loja.nome}')" style="view-transition-name: loja-card-${loja.id};">
+                <div class="glass-panel loja-card tilt-element" data-action="abrir-loja" data-loja-id="${loja.id}" data-nome="${lojaNomeAttr}" style="view-transition-name: loja-card-${loja.id}; cursor: pointer;">
                     <div>
-                        <h3 style="color: var(--accent-3);">${loja.nome}</h3>
+                        <h3 style="color: var(--accent-3);">${lojaNomeSafe}</h3>
                         <div class="loja-info">
                             <span>Sangrias Pendentes: <strong class="text-yellow">${pendentesLoja}</strong></span>
                             <span>Boletos: <strong class="text-red">${boletosPendentes}</strong></span>
@@ -926,12 +1109,16 @@ const SmartFarmaLogic = (() => {
                     const loja = lojas.find(l => l.id === v.loja_id);
                     const nomeLoja = loja ? loja.nome : 'Sem Loja';
                     const isOnline = v.isOnline === true;
+                    const nomeVSafe = escapeHtml(v.nome || 'Sem nome');
+                    const nomeLojaSafe = escapeHtml(nomeLoja);
+                    const usuarioSafe = escapeHtml(v.usuario || '');
+                    const lastSeenSafe = escapeHtml(v.lastSeen || '');
                     
                     return `
                     <div class="glass-panel vendedor-card tilt-element" style="padding: 1.2rem; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 1rem;">
                         <div>
-                            <strong style="color: var(--text-primary); font-size: 1.1rem;">${v.nome}</strong><br>
-                            <small style="color: var(--text-secondary);">Loja: <strong>${nomeLoja}</strong> | Usuário: ${v.usuario}</small>
+                            <strong style="color: var(--text-primary); font-size: 1.1rem;">${nomeVSafe}</strong><br>
+                            <small style="color: var(--text-secondary);">Loja: <strong>${nomeLojaSafe}</strong> | Usuário: ${usuarioSafe}</small>
                         </div>
                         <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--glass-border); padding-top: 0.8rem;">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -940,10 +1127,10 @@ const SmartFarmaLogic = (() => {
                                     <span style="font-size: 0.85rem; font-weight: bold; color: ${isOnline ? '#2e7d32' : 'var(--text-secondary)'};">
                                         ${isOnline ? 'Online agora' : 'Offline'}
                                     </span>
-                                    ${!isOnline && v.lastSeen ? `<small style="font-size: 0.75rem; color: var(--text-secondary);">Visto: ${v.lastSeen}</small>` : ''}
+                                    ${!isOnline && v.lastSeen ? `<small style="font-size: 0.75rem; color: var(--text-secondary);">Visto: ${lastSeenSafe}</small>` : ''}
                                 </div>
                             </div>
-                            <button onclick="window.SmartFarmaLogic.excluirVendedor('${v.id}')" class="btn-excluir ripple-trigger" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">Excluir</button>
+                            <button data-action="excluir-vendedor" data-id="${v.id}" class="btn-excluir ripple-trigger" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">Excluir</button>
                         </div>
                     </div>
                     `;
@@ -1000,7 +1187,7 @@ const SmartFarmaLogic = (() => {
         
         let lojasHtml = '<option value="">-- Selecione a Loja --</option>';
         dbCache.lojas.forEach(l => {
-            lojasHtml += `<option value="${l.id}" ${l.id === loja_id ? 'selected' : ''}>${l.nome}</option>`;
+            lojasHtml += `<option value="${l.id}" ${l.id === loja_id ? 'selected' : ''}>${escapeHtml(l.nome)}</option>`;
         });
         document.getElementById('modalReqLoja').innerHTML = lojasHtml;
         document.getElementById('aprovarAcessoModal').classList.remove('hidden');
@@ -1019,7 +1206,7 @@ const SmartFarmaLogic = (() => {
         const vendedoresDaLoja = dbCache.users.filter(u => u.loja_id === lojaId);
         
         let vendHtml = '';
-        vendedoresDaLoja.forEach(v => vendHtml += `<li>${v.nome}</li>`);
+        vendedoresDaLoja.forEach(v => vendHtml += `<li>${escapeHtml(v.nome || 'Sem nome')}</li>`);
         document.getElementById('listaVendedoresLoja').innerHTML = vendHtml || '<li>Nenhum vendedor</li>';
 
         alternarViewAdmin('detalhe');
@@ -1049,30 +1236,35 @@ const SmartFarmaLogic = (() => {
                 const vendedor = users.find(u => u.id === s.vendedor_id);
                 
                 const statusLimpo = s.status ? String(s.status).toLowerCase().trim() : 'pendente';
-                const statusExibicao = s.status || 'Pendente';
-                
+                const statusClass = safeStatusClass(statusLimpo) || 'pendente';
+                const statusExibicao = escapeHtml(s.status || 'Pendente');
+                const vendedorNomeSafe = escapeHtml(vendedor ? vendedor.nome : 'Desconhecido');
+                const dataSafe = escapeHtml(s.data || 'Sem Data');
+                const observacaoSafe = escapeHtml(s.observacao || '');
+                const motivoSafe = escapeHtml(s.motivo || '');
+
                 const isPendente = (statusLimpo !== 'aprovado' && statusLimpo !== 'modificado' && statusLimpo !== 'recusado');
                 
                 return `
                     <div class="item-card" id="sangria-card-${s.id}" style="flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; animation: fadeIn 0.4s ease ${idx * 0.05}s forwards; opacity: 0;">
                         <div style="width: 100%; display: flex; justify-content: space-between;">
-                            <span class="status-badge status-${statusLimpo}">${statusExibicao}</span>
+                            <span class="status-badge status-${statusClass}">${statusExibicao}</span>
                             <div style="text-align: right;">
                                 <strong>R$ ${Number(s.valor).toFixed(2)}</strong>
                                 ${statusLimpo === 'modificado' ? `<br><small style="text-decoration: line-through; color: var(--text-secondary);">R$ ${Number(s.valorOriginal).toFixed(2)}</small>` : ''}
                             </div>
                         </div>
                         <div style="font-size: 0.9rem; color: var(--text-secondary); width: 100%;">
-                            <strong>Vendedor:</strong> ${vendedor ? vendedor.nome : 'Desconhecido'} <br>
-                            <strong>Data:</strong> ${s.data || 'Sem Data'} <br>
-                            ${s.observacao ? `<strong>Obs:</strong> ${s.observacao}` : ''}
-                            ${s.motivo ? `<div class="motivo-box">${s.motivo}</div>` : ''}
+                            <strong>Vendedor:</strong> ${vendedorNomeSafe} <br>
+                            <strong>Data:</strong> ${dataSafe} <br>
+                            ${s.observacao ? `<strong>Obs:</strong> ${observacaoSafe}` : ''}
+                            ${s.motivo ? `<div class="motivo-box">${motivoSafe}</div>` : ''}
                         </div>
                         ${isPendente ? `
                             <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; width: 100%;">
-                                <button onclick="window.SmartFarmaLogic.aprovarSangria('${s.id}', '${lojaId}')" style="flex: 1; min-width: 80px; background-color: #2e7d32; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">ACEITAR</button>
-                                <button onclick="window.SmartFarmaLogic.abrirModal('${s.id}', 'editar', '${lojaId}', ${s.valor})" style="flex: 1; min-width: 80px; background-color: #f57c00; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">EDITAR</button>
-                                <button onclick="window.SmartFarmaLogic.abrirModal('${s.id}', 'recusar', '${lojaId}', ${s.valor})" style="flex: 1; min-width: 80px; background-color: transparent; color: #c62828; border: 2px solid #c62828; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">RECUSAR</button>
+                                <button data-action="aprovar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" style="flex: 1; min-width: 80px; background-color: #2e7d32; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">ACEITAR</button>
+                                <button data-action="editar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" data-valor="${Number(s.valor)}" style="flex: 1; min-width: 80px; background-color: #f57c00; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">EDITAR</button>
+                                <button data-action="recusar-sangria" data-id="${s.id}" data-loja-id="${lojaId}" data-valor="${Number(s.valor)}" style="flex: 1; min-width: 80px; background-color: transparent; color: #c62828; border: 2px solid #c62828; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: 'Montserrat', sans-serif;">RECUSAR</button>
                             </div>
                         ` : ''}
                     </div>
@@ -1086,7 +1278,14 @@ const SmartFarmaLogic = (() => {
             containerBoletos.innerHTML = boletosLoja.map((b, idx) => {
                 const vendedorPagou = users.find(u => u.id === b.vendedor_id);
                 let diferencaHtml = '';
-                
+
+                const numeroBoletoSafe = escapeHtml(b.numero_boleto || 'Sem Registro');
+                const dataEmissaoSafe = escapeHtml(b.data_emissao || 'Sem data');
+                const dataConfirmacaoSafe = escapeHtml(b.data_confirmacao || 'Sem data');
+                const dataPagamentoSafe = escapeHtml(b.data_pagamento || 'Sem data');
+                const vendedorPagouSafe = escapeHtml(vendedorPagou ? vendedorPagou.nome : 'Desconhecido');
+                const obsVendedorSafe = escapeHtml(b.observacao_vendedor || '');
+
                 const statusLimpo = b.status ? String(b.status).toLowerCase().trim() : 'pendente';
                 
                 let borda = '#ff8f00';
@@ -1114,22 +1313,22 @@ const SmartFarmaLogic = (() => {
                 return `
                     <div class="item-card" style="flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; border-left: 4px solid ${borda}; animation: fadeIn 0.4s ease ${idx * 0.05}s forwards; opacity: 0;">
                         <div style="width: 100%; display: flex; justify-content: space-between;">
-                            <strong style="color: var(--text-primary);">Nº ${b.numero_boleto || 'Sem Registro'}</strong>
+                            <strong style="color: var(--text-primary);">Nº ${numeroBoletoSafe}</strong>
                             <span class="status-badge ${classeBadge}">${txtStatus}</span>
                         </div>
                         <div style="font-size: 0.9rem; color: var(--text-secondary); width: 100%;">
                             Valor Original: <strong>R$ ${Number(b.valor_original).toFixed(2)}</strong> <br>
-                            Lançado em: ${b.data_emissao}
+                            Lançado em: ${dataEmissaoSafe}
                         </div>
                         
-                        ${statusLimpo === 'confirmado' ? `<small style="color: #ff8f00;">Loja confirmou recebimento em: ${b.data_confirmacao}</small>` : ''}
+                        ${statusLimpo === 'confirmado' ? `<small style="color: #ff8f00;">Loja confirmou recebimento em: ${dataConfirmacaoSafe}</small>` : ''}
 
                         ${isPago ? `
                             <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--glass-border); width: 100%; font-size: 0.9rem;">
-                                Pago por: <strong>${vendedorPagou ? vendedorPagou.nome : 'Desconhecido'}</strong> em ${b.data_pagamento}<br>
+                                Pago por: <strong>${vendedorPagouSafe}</strong> em ${dataPagamentoSafe}<br>
                                 Valor Retirado: <strong>R$ ${Number(b.valor_pago).toFixed(2)}</strong><br>
                                 ${diferencaHtml}<br>
-                                ${b.observacao_vendedor ? `<strong>Obs da Loja:</strong> ${b.observacao_vendedor}` : ''}
+                                ${b.observacao_vendedor ? `<strong>Obs da Loja:</strong> ${obsVendedorSafe}` : ''}
                             </div>
                         ` : ''}
                     </div>
@@ -1256,6 +1455,10 @@ const SmartFarmaLogic = (() => {
 
     const API = {
         init: () => {
+            if (isLowPerformanceDevice && document.body) {
+                document.body.classList.add('low-performance-mode');
+            }
+
             waitForFirebase(() => {
                 initDB();
                 initLoginView();

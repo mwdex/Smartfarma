@@ -1,5 +1,14 @@
 window.SmartFarmaInteractions = (() => {
     
+    const isLowPerformanceDevice = (() => {
+        const memory = Number(navigator.deviceMemory || 0);
+        const cores = Number(navigator.hardwareConcurrency || 0);
+        const saveData = navigator.connection && navigator.connection.saveData === true;
+        return saveData || (memory > 0 && memory <= 2) || (cores > 0 && cores <= 2);
+    })();
+
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     // ==========================================
     // 1. EFEITO TILT 3D AVANÇADO (GPU ACCELERATED)
     // ==========================================
@@ -63,6 +72,8 @@ window.SmartFarmaInteractions = (() => {
         // Pega botões customizados também para garantir uniformidade
         const buttons = document.querySelectorAll('.ripple-trigger, .btn-primary, .btn-secondary, .btn-login-red');
         
+        if (isLowPerformanceDevice || prefersReducedMotion()) return;
+
         buttons.forEach(btn => {
             // Evita duplicação de eventos caso o DOM atualize
             btn.removeEventListener('click', createRipple);
@@ -109,6 +120,7 @@ window.SmartFarmaInteractions = (() => {
     const initThemeToggle = () => {
         const btn = document.getElementById('themeToggleBtn');
         if (!btn) return;
+        const reduceMotion = prefersReducedMotion() || isLowPerformanceDevice;
 
         // Recupera o estado
         const currentTheme = localStorage.getItem('smartfarma_theme');
@@ -126,7 +138,7 @@ window.SmartFarmaInteractions = (() => {
             };
 
             // Fallback imediato se não suportar View Transitions
-            if (!document.startViewTransition) {
+            if (!document.startViewTransition || reduceMotion) {
                 performThemeSwitch();
                 return;
             }
@@ -180,8 +192,14 @@ window.SmartFarmaInteractions = (() => {
 
     return {
         init: () => {
-            // Desativa Tilt no mobile para salvar bateria e focar em tap interactions
-            if (window.matchMedia("(min-width: 768px)").matches) {
+            const reduceMotion = prefersReducedMotion() || isLowPerformanceDevice;
+
+            if (isLowPerformanceDevice && document.body) {
+                document.body.classList.add('low-performance-mode');
+            }
+
+            // Desativa Tilt no mobile e em hardware fraco
+            if (!reduceMotion && window.matchMedia("(min-width: 768px)").matches) {
                 initTiltEffect();
             }
             initRipple();

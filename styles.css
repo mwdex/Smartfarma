@@ -821,6 +821,44 @@ body.dark-theme .progress-bar { background: rgba(255,255,255,0.05); }
     40%, 60% { transform: translate3d(6px, 0, 0); }
 }
 
+
+/* =========================================
+   LOW PERFORMANCE MODE (2GB RAM / CPU fraco)
+========================================= */
+body.low-performance-mode .fluid-bg {
+    filter: none;
+}
+
+body.low-performance-mode .blob,
+body.low-performance-mode .status-pendente,
+body.low-performance-mode .cinematic-logo.reveal,
+body.low-performance-mode .cinematic-title.reveal,
+body.low-performance-mode .cinematic-subtitle.type {
+    animation: none !important;
+}
+
+body.low-performance-mode .glass-panel::after,
+body.low-performance-mode .item-card::after {
+    display: none;
+}
+
+body.low-performance-mode .glass-card,
+body.low-performance-mode .glass-panel,
+body.low-performance-mode .glass-nav,
+body.low-performance-mode .login-experience-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+body.low-performance-mode .bar-fill,
+body.low-performance-mode .btn-glow,
+body.low-performance-mode .btn-primary,
+body.low-performance-mode .btn-secondary,
+body.low-performance-mode .item-card,
+body.low-performance-mode .glass-panel {
+    transition-duration: 0.15s !important;
+}
+
 @media (max-width: 768px) {
     :root { --container-padding: 15px; }
     body { padding: 10px; }

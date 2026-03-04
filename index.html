@@ -210,7 +210,7 @@
                     </div>
 
                     <div class="mt-2" id="adminOnlyTools" style="display: none;">
-                        <button onclick="window.SmartFarmaLogic.abrirModalNovoUsuario()" class="btn-primary ripple-trigger w-100" style="background: var(--accent-3); padding: 0.8rem;">
+                        <button id="btnAbrirModalNovoUsuario" class="btn-primary ripple-trigger w-100" style="background: var(--accent-3); padding: 0.8rem;">
                             + Criar Acesso Interno
                         </button>
                     </div>
@@ -364,8 +364,8 @@
                 <select id="modalReqLoja" class="glass-input" required></select>
             </div>
             <div class="action-btns mt-2">
-                <button onclick="window.SmartFarmaLogic.fecharModalAprovacao()" class="btn-secondary" style="flex: 1;">Cancelar</button>
-                <button id="btnConfirmarAcesso" onclick="window.SmartFarmaLogic.confirmarAprovacaoAcesso()" class="btn-primary" style="flex: 1; background: var(--accent-2);">Aprovar e Salvar</button>
+                <button id="btnFecharModalAprovacao" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button id="btnConfirmarAcesso" class="btn-primary" style="flex: 1; background: var(--accent-2);">Aprovar e Salvar</button>
             </div>
         </div>
     </div>
@@ -389,7 +389,7 @@
             </div>
             <div class="input-group">
                 <label>Tipo de Acesso</label>
-                <select id="admNewTipo" class="glass-input" onchange="window.SmartFarmaLogic.toggleLojaSelection()">
+                <select id="admNewTipo" class="glass-input">
                     <option value="vendedor">Vendedor (Loja)</option>
                     <option value="admin">Escritório (Admin)</option>
                 </select>
@@ -400,8 +400,8 @@
             </div>
 
             <div class="action-btns mt-2">
-                <button onclick="window.SmartFarmaLogic.fecharModalNovoUsuario()" class="btn-secondary" style="flex: 1;">Cancelar</button>
-                <button onclick="window.SmartFarmaLogic.salvarNovoUsuario()" class="btn-primary" style="flex: 1; background: var(--accent-3);">Criar Acesso</button>
+                <button id="btnFecharModalNovoUsuario" class="btn-secondary" style="flex: 1;">Cancelar</button>
+                <button id="btnSalvarNovoUsuario" class="btn-primary" style="flex: 1; background: var(--accent-3);">Criar Acesso</button>
             </div>
         </div>
     </div>
