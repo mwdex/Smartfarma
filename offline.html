@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Farma • Sem conexão</title>
+  <style>
+    :root {
+      --bg-1: #0b132b;
+      --bg-2: #1c2541;
+      --card: rgba(255, 255, 255, 0.08);
+      --card-border: rgba(255, 255, 255, 0.18);
+      --text: #ecf3ff;
+      --muted: #aab9d6;
+      --accent: #42a5f5;
+      --accent-2: #ef5350;
+      --success: #66bb6a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 20% 10%, #23395b 0%, var(--bg-1) 45%, #050914 100%);
+      overflow-x: hidden;
+    }
+
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(66,165,245,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(66,165,245,0.08) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at center, black 30%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1.1fr 1fr;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      letter-spacing: .2px;
+    }
+
+    p { color: var(--muted); line-height: 1.5; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(239,83,80,.14);
+      border: 1px solid rgba(239,83,80,.4);
+      color: #ffd8d8;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      box-shadow: 0 0 12px var(--accent-2);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, #1565c0, #42a5f5);
+      box-shadow: 0 8px 20px rgba(66,165,245,.35);
+    }
+
+    button.secondary {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: none;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .stat small { color: var(--muted); display: block; margin-bottom: 4px; }
+    .stat strong { font-size: 1.05rem; }
+
+    .game-wrap {
+      display: grid;
+      gap: 10px;
+    }
+
+    #gameCanvas {
+      width: 100%;
+      height: 360px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: linear-gradient(180deg, #13294b, #0a1629);
+      display: block;
+    }
+
+    .hint {
+      font-size: .9rem;
+      color: var(--muted);
+    }
+
+    .online {
+      background: rgba(102,187,106,.18);
+      border-color: rgba(102,187,106,.5);
+      color: #ddf8de;
+    }
+    .online .dot { background: var(--success); box-shadow: 0 0 12px var(--success); }
+
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      #gameCanvas { height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+
+  <main class="wrap">
+    <section class="panel">
+      <div id="connStatus" class="status"><span class="dot"></span>Sem internet no momento</div>
+      <h1>Smart Farma em Modo Offline</h1>
+      <p>
+        Você está sem conexão, mas não ficou sem experiência. Esta página mantém um visual completo,
+        permite tentar reconectar e ainda traz um mini game para passar o tempo até o sinal voltar.
+      </p>
+
+      <div class="actions">
+        <button id="btnRetry">Tentar reconectar</button>
+        <button id="btnHome" class="secondary">Abrir painel principal</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><small>Conexão</small><strong id="networkLabel">Offline</strong></div>
+        <div class="stat"><small>Tempo aqui</small><strong id="timeOffline">00:00</strong></div>
+        <div class="stat"><small>Melhor score</small><strong id="bestScore">0</strong></div>
+      </div>
+    </section>
+
+    <section class="panel game-wrap">
+      <h2 style="margin:0">💊 Farma Dash (offline)</h2>
+      <p class="hint">Mova o carrinho para desviar dos frascos. Teclado: ← → | Mobile: arraste no canvas.</p>
+      <canvas id="gameCanvas" width="640" height="360"></canvas>
+      <div class="actions">
+        <button id="btnStart">Iniciar / Reiniciar</button>
+        <button id="btnPause" class="secondary">Pausar</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('connStatus');
+    const networkLabel = document.getElementById('networkLabel');
+    const timeOffline = document.getElementById('timeOffline');
+    const bestScoreEl = document.getElementById('bestScore');
+
+    const updateOnlineState = () => {
+      const online = navigator.onLine;
+      statusEl.classList.toggle('online', online);
+      statusEl.innerHTML = `<span class="dot"></span>${online ? 'Conexão restaurada' : 'Sem internet no momento'}`;
+      networkLabel.textContent = online ? 'Online' : 'Offline';
+    };
+
+    window.addEventListener('online', updateOnlineState);
+    window.addEventListener('offline', updateOnlineState);
+    updateOnlineState();
+
+    document.getElementById('btnRetry').addEventListener('click', () => location.reload());
+    document.getElementById('btnHome').addEventListener('click', () => location.href = './index.html');
+
+    let sec = 0;
+    setInterval(() => {
+      sec++;
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      timeOffline.textContent = `${m}:${s}`;
+    }, 1000);
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const state = {
+      running: false,
+      paused: false,
+      score: 0,
+      speed: 2.8,
+      spawnTick: 0,
+      player: { x: 290, y: 312, w: 60, h: 24, vx: 0 },
+      drops: [],
+      keys: { left: false, right: false },
+      best: Number(localStorage.getItem('sf_offline_best_score') || 0)
+    };
+
+    bestScoreEl.textContent = String(state.best);
+
+    const drawPlayer = () => {
+      const p = state.player;
+      ctx.fillStyle = '#90caf9';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = '#1565c0';
+      ctx.fillRect(p.x + 10, p.y - 10, p.w - 20, 10);
+      ctx.fillStyle = '#e3f2fd';
+      ctx.fillRect(p.x + 6, p.y + p.h, 10, 5);
+      ctx.fillRect(p.x + p.w - 16, p.y + p.h, 10, 5);
+    };
+
+    const spawnDrop = () => {
+      const size = 18 + Math.random() * 14;
+      state.drops.push({
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        w: size,
+        h: size,
+        vy: state.speed + Math.random() * 1.8
+      });
+    };
+
+    const drawDrop = (d) => {
+      ctx.fillStyle = '#ef5350';
+      if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath();
+        ctx.roundRect(d.x, d.y, d.w, d.h, 5);
+        ctx.fill();
+      } else {
+        ctx.fillRect(d.x, d.y, d.w, d.h);
+      }
+      ctx.fillStyle = '#ffcdd2';
+      ctx.fillRect(d.x + 3, d.y + d.h * 0.45, d.w - 6, 3);
+    };
+
+    const collide = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+    const resetGame = () => {
+      state.score = 0;
+      state.speed = 2.8;
+      state.spawnTick = 0;
+      state.player.x = 290;
+      state.player.vx = 0;
+      state.drops = [];
+      state.running = true;
+      state.paused = false;
+    };
+
+    const endGame = () => {
+      state.running = false;
+      if (state.score > state.best) {
+        state.best = state.score;
+        localStorage.setItem('sf_offline_best_score', String(state.best));
+        bestScoreEl.textContent = String(state.best);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 28px Montserrat, sans-serif';
+      ctx.fillText('Fim de jogo', 235, 160);
+      ctx.font = '16px Montserrat, sans-serif';
+      ctx.fillText(`Score: ${state.score} • Melhor: ${state.best}`, 220, 196);
+    };
+
+    const renderHUD = () => {
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(10, 10, 165, 40);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 15px Montserrat, sans-serif';
+      ctx.fillText(`Score: ${state.score}`, 20, 35);
+      ctx.fillText(`Vel: ${state.speed.toFixed(1)}`, 95, 35);
+    };
+
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (state.running && !state.paused) {
+        if (state.keys.left) state.player.vx = -5.2;
+        else if (state.keys.right) state.player.vx = 5.2;
+        else state.player.vx *= 0.75;
+
+        state.player.x += state.player.vx;
+        state.player.x = Math.max(0, Math.min(canvas.width - state.player.w, state.player.x));
+
+        state.spawnTick += 1;
+        if (state.spawnTick > Math.max(16, 42 - state.speed * 5)) {
+          spawnDrop();
+          state.spawnTick = 0;
+        }
+
+        state.drops.forEach((d) => d.y += d.vy);
+        state.drops = state.drops.filter((d) => d.y < canvas.height + 30);
+
+        for (const d of state.drops) {
+          if (collide(state.player, d)) {
+            endGame();
+            break;
+          }
+        }
+
+        state.score += 1;
+        if (state.score % 240 === 0) state.speed += 0.35;
+      }
+
+      drawPlayer();
+      state.drops.forEach(drawDrop);
+      renderHUD();
+
+      if (!state.running) {
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'bold 18px Montserrat, sans-serif';
+        ctx.fillText('Clique em "Iniciar / Reiniciar" para jogar', 148, 330);
+      }
+
+      requestAnimationFrame(tick);
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') state.keys.left = true;
+      if (e.key === 'ArrowRight') state.keys.right = true;
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowLeft') state.keys.left = false;
+      if (e.key === 'ArrowRight') state.keys.right = false;
+    });
+
+    let dragging = false;
+    canvas.addEventListener('pointerdown', () => dragging = true);
+    canvas.addEventListener('pointerup', () => dragging = false);
+    canvas.addEventListener('pointerleave', () => dragging = false);
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      state.player.x = Math.max(0, Math.min(canvas.width - state.player.w, x - state.player.w / 2));
+    });
+
+    document.getElementById('btnStart').addEventListener('click', resetGame);
+    document.getElementById('btnPause').addEventListener('click', () => {
+      if (!state.running) return;
+      state.paused = !state.paused;
+      document.getElementById('btnPause').textContent = state.paused ? 'Continuar' : 'Pausar';
+    });
+
+    tick();
+  </script>
+</body>
+</html>

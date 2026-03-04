@@ -26,5 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn("Aviso: Módulo SmartFarmaInteractions não carregado.");
     }
     
+
+    // 4. Service Worker (modo offline)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch((err) => {
+                console.warn('Falha ao registar Service Worker:', err);
+            });
+        });
+    }
+
     console.log("🚀 Smart Farma - Sistema de Gestão Inicializado com Sucesso.");
 });
