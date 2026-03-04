@@ -4,6 +4,23 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    const isOfflinePage = window.location.pathname.endsWith('/offline.html') || window.location.pathname.endsWith('offline.html');
+
+    const routeToOfflinePage = () => {
+        if (!isOfflinePage && navigator.onLine === false) {
+            window.location.replace('/offline.html');
+            return true;
+        }
+        return false;
+    };
+
+    // Se abrir o app já sem internet, vai direto para a tela offline
+    if (routeToOfflinePage()) return;
+
+    // Se perder internet durante uso, redireciona para a tela offline
+    window.addEventListener('offline', () => {
+        routeToOfflinePage();
+    });
     
     // 1. Inicializa a Engine de Animações Base
     if (window.SmartFarmaAnimations) {
